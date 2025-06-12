@@ -1,10 +1,11 @@
-import { View, Text } from 'react-native'
-import React from 'react'
-import { Tabs } from 'expo-router'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { TabBar } from '@/components/tabBar'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { Tabs } from 'expo-router'
+import React from 'react'
+
 
 const TabsLayout = () => {
+
   return (
     <Tabs
     tabBar={props => <TabBar {...props} />}

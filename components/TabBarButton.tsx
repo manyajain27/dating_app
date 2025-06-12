@@ -1,13 +1,13 @@
-import React, { JSX, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { AntDesign, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { PlatformPressable } from '@react-navigation/elements';
-import { AntDesign, Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { 
-  interpolate, 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring,
-  SharedValue 
+import React, { JSX, useEffect, useMemo } from 'react';
+import { StyleSheet } from 'react-native';
+import Animated, {
+  interpolate,
+  SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring
 } from 'react-native-reanimated';
 
 type IconProps = { color: string; size?: number };
@@ -103,7 +103,7 @@ const TabBarButton: React.FC<TabBarButtonProps> = ({
   }
 
   const iconColor = isFocused ? '#fff' : '#16213e';
-  const textColor = isFocused ? '#16213e' : '#8e8e93';
+  const textColor = isFocused ? '#16213e' : '#16213e';
 
   return (
     <PlatformPressable

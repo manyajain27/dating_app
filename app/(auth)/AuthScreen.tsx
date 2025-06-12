@@ -1,9 +1,9 @@
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, Linking, Image } from 'react-native';
-import React from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { AntDesign, FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialCommunityIcons, AntDesign, FontAwesome } from '@expo/vector-icons'
 import { router } from 'expo-router';
+import React from 'react';
+import { Image, Linking, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const AuthScreen: React.FC = () => {
   const handlePhoneSignIn = (): void => {
@@ -37,7 +37,7 @@ const AuthScreen: React.FC = () => {
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.button, styles.phoneButton]}
-            onPress={() => router.push('/(tabs)/swipe')}
+            onPress={() => router.replace('/(tabs)/swipe')}
             activeOpacity={0.8}
           >
             <FontAwesome name="phone" size={20} color="#0f0f23" style={styles.icon} />

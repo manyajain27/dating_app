@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Dimensions, LayoutChangeEvent } from 'react-native';
-import { useLinkBuilder } from '@react-navigation/native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import TabBarButton from './TabBarButton';
-import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring,
-  runOnJS 
+import { useLinkBuilder } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Dimensions, LayoutChangeEvent, StyleSheet, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring
 } from 'react-native-reanimated';
+import TabBarButton from './TabBarButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -159,11 +158,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 const styles = StyleSheet.create({
   tabbar: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 30,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     paddingVertical: 15,
     borderRadius: 35,
     shadowColor: '#000',
