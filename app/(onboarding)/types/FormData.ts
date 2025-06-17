@@ -9,7 +9,7 @@ export interface IFormData {
     believesInStarSigns?: 'yes' | 'no' | 'kinda'; 
     lookingFor: string[];
     photos: string[];
-    location: string;
+    location_city: string;
     interests: string[];
     teasers: Record<string, string>;
     children: string;
@@ -22,9 +22,10 @@ export interface ScreenProps {
   formData: IFormData;
   updateFormData: (field: keyof IFormData, value: any) => void;
   nextStep: () => void;
-  // while not used in every screen, keeping prevStep for consistency.
   prevStep: () => void;
+  handleComplete: () => Promise<void>; // Changed to async
   setShowPhotoTipsModal?: (show: boolean) => void;
+  isSaving?: boolean; // Add saving state
 }
 
 export interface TeaserCategory {

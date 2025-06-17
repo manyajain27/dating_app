@@ -1,6 +1,11 @@
+import { AuthGuard } from "@/context/AuthGaurd";
 import { Redirect } from "expo-router";
 import { Text, View } from "react-native";
 
 export default function Index() {
-  return <Redirect href="/(auth)/AuthScreen" />;
+  return (
+    <AuthGuard requireAuth={false}>
+      <Redirect href="/(auth)/AuthScreen" />
+    </AuthGuard>
+  );
 }

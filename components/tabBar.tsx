@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
     paddingVertical: 15,
     borderRadius: 35,
     shadowColor: '#000',
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: 'absolute',
-    backgroundColor: '#16213e',
+    backgroundColor: '#f5f5dc',
     borderRadius: INDICATOR_SIZE / 2, 
   },
 });

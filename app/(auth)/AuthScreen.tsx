@@ -1,4 +1,5 @@
-import { AntDesign, FontAwesome } from '@expo/vector-icons';
+// screens/AuthScreen.tsx
+import { AntDesign, FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React from 'react';
@@ -8,14 +9,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const AuthScreen: React.FC = () => {
   const handlePhoneSignIn = (): void => {
     console.log('Phone Sign-In Tapped');
+    // Navigate to phone auth screen when implemented
+  };
+
+  const handleEmailSignIn = (): void => {
+    router.push('/(auth)/SignIn');
   };
 
   const handleGoogleSignIn = (): void => {
     console.log('Google Sign-In Tapped');
+    // Implement Google Sign-In
   };
 
   const handleAppleSignIn = (): void => {
     console.log('Apple Sign-In Tapped');
+    // Implement Apple Sign-In
   };
 
   const openLink = (url: string) => {
@@ -37,12 +45,23 @@ const AuthScreen: React.FC = () => {
         <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.button, styles.phoneButton]}
-            onPress={() => router.replace('/(tabs)/swipe')}
+            onPress={handlePhoneSignIn}
             activeOpacity={0.8}
           >
             <FontAwesome name="phone" size={20} color="#0f0f23" style={styles.icon} />
             <Text style={[styles.buttonText, styles.phoneButtonText]}>
               Continue with Phone Number
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.emailButton]}
+            onPress={handleEmailSignIn}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="email" size={20} color="#0f0f23" style={styles.icon} />
+            <Text style={[styles.buttonText, styles.emailButtonText]}>
+              Continue with Email
             </Text>
           </TouchableOpacity>
 
@@ -148,9 +167,16 @@ const styles = StyleSheet.create({
   },
   phoneButton: {
     backgroundColor: '#FFFFFF',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   phoneButtonText: {
+    color: '#0f0f23',
+  },
+  emailButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    marginBottom: 24,
+  },
+  emailButtonText: {
     color: '#0f0f23',
   },
   googleButton: {

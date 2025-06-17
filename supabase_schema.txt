@@ -1,564 +1,280 @@
--- =============================================
--- DATING APP DATABASE SCHEMA
--- Production-ready PostgreSQL schema with RLS
--- =============================================
+-- Dating App Database Schema with RLS Policies
 
--- Enable required extensions
+-- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "postgis";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- =============================================
--- ENUMS
--- =============================================
-
-CREATE TYPE gender_enum AS ENUM ('male', 'female', 'non_binary', 'other');
-CREATE TYPE relationship_type_enum AS ENUM ('serious', 'casual', 'friends', 'networking');
-CREATE TYPE education_level_enum AS ENUM ('high_school', 'bachelor', 'master', 'phd', 'other');
-CREATE TYPE report_reason_enum AS ENUM ('inappropriate_content', 'harassment', 'fake_profile', 'spam', 'other');
-CREATE TYPE notification_type_enum AS ENUM ('match', 'message', 'like', 'super_like', 'profile_view', 'system');
-CREATE TYPE subscription_status_enum AS ENUM ('active', 'cancelled', 'expired', 'trial');
-CREATE TYPE verification_status_enum AS ENUM ('pending', 'verified', 'rejected');
-
--- =============================================
--- CORE TABLES
--- =============================================
-
--- Users table (extends Supabase auth.users)
-CREATE TABLE public.users (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    email TEXT UNIQUE NOT NULL,
-    first_name TEXT NOT NULL,
-    last_name TEXT,
-    date_of_birth DATE NOT NULL,
-    gender gender_enum NOT NULL,
-    bio TEXT,
-    location GEOGRAPHY(POINT, 4326),
-    city TEXT,
-    country TEXT,
-    occupation TEXT,
-    education education_level_enum,
-    height_cm INTEGER,
-    relationship_type relationship_type_enum DEFAULT 'serious',
-    is_verified BOOLEAN DEFAULT FALSE,
-    verification_status verification_status_enum DEFAULT 'pending',
-    is_premium BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
-    is_banned BOOLEAN DEFAULT FALSE,
-    last_active_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Create profiles table
+CREATE TABLE profiles (
+  id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  first_name TEXT,
+  last_name TEXT,
+  bio TEXT,
+  age INTEGER,
+  gender TEXT CHECK (gender IN ('male', 'female', 'non-binary', 'other')),
+  interested_in TEXT CHECK (interested_in IN ('male', 'female', 'non-binary', 'everyone')),
+  location_city TEXT,
+  location_state TEXT,
+  location_country TEXT,
+  profile_pictures TEXT[] DEFAULT '{}',
+  interests TEXT[] DEFAULT '{}',
+  occupation TEXT,
+  education TEXT,
+  height INTEGER, -- in centimeters
+  looking_for TEXT CHECK (looking_for IN ('relationship', 'casual', 'friendship', 'not-sure')),
+  is_verified BOOLEAN DEFAULT FALSE,
+  is_premium BOOLEAN DEFAULT FALSE,
+  last_active TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- User preferences for matching
-CREATE TABLE public.user_preferences (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    preferred_gender gender_enum[],
-    min_age INTEGER DEFAULT 18,
-    max_age INTEGER DEFAULT 99,
-    max_distance_km INTEGER DEFAULT 50,
-    preferred_relationship_type relationship_type_enum[],
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Create matches table
+CREATE TABLE matches (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user1_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  user2_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  matched_at TIMESTAMPTZ DEFAULT NOW(),
+  is_super_like BOOLEAN DEFAULT FALSE,
+  UNIQUE(user1_id, user2_id),
+  CHECK (user1_id != user2_id)
 );
 
--- User photos
-CREATE TABLE public.user_photos (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    photo_url TEXT NOT NULL,
-    is_primary BOOLEAN DEFAULT FALSE,
-    order_index INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Create swipes table (to track likes/dislikes)
+CREATE TABLE swipes (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  swiper_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  swiped_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  is_like BOOLEAN NOT NULL,
+  is_super_like BOOLEAN DEFAULT FALSE,
+  swiped_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(swiper_id, swiped_id),
+  CHECK (swiper_id != swiped_id)
 );
 
--- User interests/hobbies
-CREATE TABLE public.interests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name TEXT UNIQUE NOT NULL,
-    category TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Create conversations table
+CREATE TABLE conversations (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
+  last_message_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE public.user_interests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    interest_id UUID NOT NULL REFERENCES public.interests(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, interest_id)
+-- Create messages table
+CREATE TABLE messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  message_type TEXT DEFAULT 'text' CHECK (message_type IN ('text', 'image', 'gif')),
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- =============================================
--- MATCHING & INTERACTIONS
--- =============================================
-
--- User swipes/likes
-CREATE TABLE public.swipes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    swiper_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    swiped_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    is_like BOOLEAN NOT NULL,
-    is_super_like BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(swiper_id, swiped_id)
+-- Create reports table
+CREATE TABLE reports (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  reporter_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  reported_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Matches (when both users like each other)
-CREATE TABLE public.matches (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user1_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    user2_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    is_active BOOLEAN DEFAULT TRUE,
-    UNIQUE(user1_id, user2_id),
-    CONSTRAINT matches_different_users CHECK (user1_id != user2_id),
-    CONSTRAINT matches_ordered_users CHECK (user1_id < user2_id)
+-- Create blocks table
+CREATE TABLE blocks (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  blocker_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  blocked_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  blocked_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(blocker_id, blocked_id),
+  CHECK (blocker_id != blocked_id)
 );
 
--- Conversations
-CREATE TABLE public.conversations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    match_id UUID NOT NULL REFERENCES public.matches(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Create indexes for better performance
+CREATE INDEX idx_profiles_location ON profiles(location_city, location_state);
+CREATE INDEX idx_profiles_age_gender ON profiles(age, gender, interested_in);
+CREATE INDEX idx_profiles_last_active ON profiles(last_active);
+CREATE INDEX idx_swipes_swiper_swiped ON swipes(swiper_id, swiped_id);
+CREATE INDEX idx_matches_users ON matches(user1_id, user2_id);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at);
+CREATE INDEX idx_messages_sender ON messages(sender_id);
 
--- Messages
-CREATE TABLE public.messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    is_read BOOLEAN DEFAULT FALSE,
-    read_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Enable Row Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE swipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocks ENABLE ROW LEVEL SECURITY;
 
--- =============================================
--- PREMIUM FEATURES
--- =============================================
+-- Profiles RLS Policies
+CREATE POLICY "Users can view their own profile" ON profiles
+  FOR SELECT USING (auth.uid() = id);
 
--- Subscriptions
-CREATE TABLE public.subscriptions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    plan_name TEXT NOT NULL,
-    status subscription_status_enum DEFAULT 'active',
-    starts_at TIMESTAMPTZ NOT NULL,
-    ends_at TIMESTAMPTZ NOT NULL,
-    stripe_subscription_id TEXT UNIQUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Users can update their own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
 
--- Super likes (premium feature)
-CREATE TABLE public.super_likes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    used_at TIMESTAMPTZ DEFAULT NOW(),
-    target_user_id UUID REFERENCES public.users(id) ON DELETE SET NULL
-);
+CREATE POLICY "Users can insert their own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
--- Profile boosts (premium feature)
-CREATE TABLE public.profile_boosts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    activated_at TIMESTAMPTZ DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL
-);
+CREATE POLICY "Users can view other profiles for matching" ON profiles
+  FOR SELECT USING (
+    auth.uid() IS NOT NULL AND 
+    auth.uid() != id AND
+    -- Don't show blocked users
+    NOT EXISTS (
+      SELECT 1 FROM blocks 
+      WHERE (blocker_id = auth.uid() AND blocked_id = id) 
+      OR (blocker_id = id AND blocked_id = auth.uid())
+    )
+  );
 
--- =============================================
--- SAFETY & MODERATION
--- =============================================
+-- Swipes RLS Policies
+CREATE POLICY "Users can view their own swipes" ON swipes
+  FOR SELECT USING (auth.uid() = swiper_id);
 
--- User reports
-CREATE TABLE public.reports (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reporter_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    reported_user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    reason report_reason_enum NOT NULL,
-    description TEXT,
-    is_resolved BOOLEAN DEFAULT FALSE,
-    resolved_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Users can insert their own swipes" ON swipes
+  FOR INSERT WITH CHECK (auth.uid() = swiper_id);
 
--- Blocked users
-CREATE TABLE public.blocked_users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    blocker_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    blocked_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(blocker_id, blocked_id),
-    CONSTRAINT blocked_users_different_users CHECK (blocker_id != blocked_id)
-);
+CREATE POLICY "Users can view swipes on them for matching" ON swipes
+  FOR SELECT USING (auth.uid() = swiped_id);
 
--- =============================================
--- NOTIFICATIONS
--- =============================================
+-- Matches RLS Policies
+CREATE POLICY "Users can view their matches" ON matches
+  FOR SELECT USING (auth.uid() = user1_id OR auth.uid() = user2_id);
 
-CREATE TABLE public.notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    type notification_type_enum NOT NULL,
-    title TEXT NOT NULL,
-    body TEXT,
-    data JSONB,
-    is_read BOOLEAN DEFAULT FALSE,
-    read_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "System can insert matches" ON matches
+  FOR INSERT WITH CHECK (true);
 
--- =============================================
--- ANALYTICS & TRACKING
--- =============================================
+-- Conversations RLS Policies
+CREATE POLICY "Users can view their conversations" ON conversations
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM matches m 
+      WHERE m.id = match_id 
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+    )
+  );
 
--- User activity tracking
-CREATE TABLE public.user_activity (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    activity_type TEXT NOT NULL,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Users can insert conversations for their matches" ON conversations
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM matches m 
+      WHERE m.id = match_id 
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+    )
+  );
 
--- =============================================
--- INDEXES FOR PERFORMANCE
--- =============================================
+-- Messages RLS Policies
+CREATE POLICY "Users can view messages in their conversations" ON messages
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM conversations c
+      JOIN matches m ON c.match_id = m.id
+      WHERE c.id = conversation_id 
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+    )
+  );
 
--- Users indexes
-CREATE INDEX idx_users_location ON public.users USING GIST(location);
-CREATE INDEX idx_users_active ON public.users(is_active, last_active_at);
-CREATE INDEX idx_users_age ON public.users(date_of_birth);
-CREATE INDEX idx_users_gender ON public.users(gender);
+CREATE POLICY "Users can send messages in their conversations" ON messages
+  FOR INSERT WITH CHECK (
+    auth.uid() = sender_id AND
+    EXISTS (
+      SELECT 1 FROM conversations c
+      JOIN matches m ON c.match_id = m.id
+      WHERE c.id = conversation_id 
+      AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
+    )
+  );
 
--- Swipes indexes
-CREATE INDEX idx_swipes_swiper ON public.swipes(swiper_id, created_at DESC);
-CREATE INDEX idx_swipes_swiped ON public.swipes(swiped_id, created_at DESC);
-CREATE INDEX idx_swipes_likes ON public.swipes(swiped_id) WHERE is_like = true;
+CREATE POLICY "Users can update their own messages" ON messages
+  FOR UPDATE USING (auth.uid() = sender_id);
 
--- Matches indexes
-CREATE INDEX idx_matches_user1 ON public.matches(user1_id, created_at DESC);
-CREATE INDEX idx_matches_user2 ON public.matches(user2_id, created_at DESC);
-CREATE INDEX idx_matches_active ON public.matches(is_active) WHERE is_active = true;
+-- Reports RLS Policies
+CREATE POLICY "Users can view their own reports" ON reports
+  FOR SELECT USING (auth.uid() = reporter_id);
 
--- Messages indexes
-CREATE INDEX idx_messages_conversation ON public.messages(conversation_id, created_at DESC);
-CREATE INDEX idx_messages_sender ON public.messages(sender_id, created_at DESC);
-CREATE INDEX idx_messages_unread ON public.messages(conversation_id) WHERE is_read = false;
+CREATE POLICY "Users can insert reports" ON reports
+  FOR INSERT WITH CHECK (auth.uid() = reporter_id);
 
--- Notifications indexes
-CREATE INDEX idx_notifications_user ON public.notifications(user_id, created_at DESC);
-CREATE INDEX idx_notifications_unread ON public.notifications(user_id) WHERE is_read = false;
+-- Blocks RLS Policies
+CREATE POLICY "Users can view their blocks" ON blocks
+  FOR SELECT USING (auth.uid() = blocker_id);
 
--- Full-text search indexes
-CREATE INDEX idx_users_search ON public.users USING GIN(to_tsvector('english', first_name || ' ' || COALESCE(bio, '')));
+CREATE POLICY "Users can insert blocks" ON blocks
+  FOR INSERT WITH CHECK (auth.uid() = blocker_id);
 
--- =============================================
--- ROW LEVEL SECURITY POLICIES
--- =============================================
+CREATE POLICY "Users can delete their blocks" ON blocks
+  FOR DELETE USING (auth.uid() = blocker_id);
 
--- Enable RLS on all tables
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_photos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_interests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.swipes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.matches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.super_likes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.profile_boosts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.blocked_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_activity ENABLE ROW LEVEL SECURITY;
+-- Functions and Triggers
 
--- Users policies
-CREATE POLICY "Users can view other active users" ON public.users
-    FOR SELECT USING (is_active = true AND is_banned = false);
+-- Function to handle new user profile creation
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO profiles (id, email, created_at, updated_at)
+  VALUES (NEW.id, NEW.email, NOW(), NOW());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE POLICY "Users can update own profile" ON public.users
-    FOR UPDATE USING (auth.uid() = id);
+-- Trigger to create profile on user signup
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
-CREATE POLICY "Users can insert own profile" ON public.users
-    FOR INSERT WITH CHECK (auth.uid() = id);
-
--- User preferences policies
-CREATE POLICY "Users can manage own preferences" ON public.user_preferences
-    FOR ALL USING (auth.uid() = user_id);
-
--- User photos policies
-CREATE POLICY "Anyone can view photos of active users" ON public.user_photos
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.users 
-            WHERE id = user_photos.user_id 
-            AND is_active = true 
-            AND is_banned = false
+-- Function to create matches when mutual likes occur
+CREATE OR REPLACE FUNCTION check_for_match()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only proceed if this is a like
+  IF NEW.is_like = TRUE THEN
+    -- Check if the other user has also liked this user
+    IF EXISTS (
+      SELECT 1 FROM swipes 
+      WHERE swiper_id = NEW.swiped_id 
+      AND swiped_id = NEW.swiper_id 
+      AND is_like = TRUE
+    ) THEN
+      -- Create a match (ensure user1_id < user2_id for consistency)
+      INSERT INTO matches (user1_id, user2_id, is_super_like)
+      VALUES (
+        CASE WHEN NEW.swiper_id < NEW.swiped_id THEN NEW.swiper_id ELSE NEW.swiped_id END,
+        CASE WHEN NEW.swiper_id < NEW.swiped_id THEN NEW.swiped_id ELSE NEW.swiper_id END,
+        NEW.is_super_like OR EXISTS (
+          SELECT 1 FROM swipes 
+          WHERE swiper_id = NEW.swiped_id 
+          AND swiped_id = NEW.swiper_id 
+          AND is_super_like = TRUE
         )
-    );
+      )
+      ON CONFLICT (user1_id, user2_id) DO NOTHING;
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE POLICY "Users can manage own photos" ON public.user_photos
-    FOR ALL USING (auth.uid() = user_id);
+-- Trigger to check for matches on swipes
+CREATE TRIGGER on_swipe_created
+  AFTER INSERT ON swipes
+  FOR EACH ROW EXECUTE FUNCTION check_for_match();
 
--- User interests policies
-CREATE POLICY "Users can manage own interests" ON public.user_interests
-    FOR ALL USING (auth.uid() = user_id);
-
--- Swipes policies
-CREATE POLICY "Users can view own swipes" ON public.swipes
-    FOR SELECT USING (auth.uid() = swiper_id OR auth.uid() = swiped_id);
-
-CREATE POLICY "Users can create own swipes" ON public.swipes
-    FOR INSERT WITH CHECK (auth.uid() = swiper_id);
-
--- Matches policies
-CREATE POLICY "Users can view own matches" ON public.matches
-    FOR SELECT USING (auth.uid() = user1_id OR auth.uid() = user2_id);
-
--- Conversations policies
-CREATE POLICY "Users can view own conversations" ON public.conversations
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.matches 
-            WHERE id = conversations.match_id 
-            AND (user1_id = auth.uid() OR user2_id = auth.uid())
-        )
-    );
-
--- Messages policies
-CREATE POLICY "Users can view messages in their conversations" ON public.messages
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.conversations c
-            JOIN public.matches m ON c.match_id = m.id
-            WHERE c.id = messages.conversation_id 
-            AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
-        )
-    );
-
-CREATE POLICY "Users can send messages in their conversations" ON public.messages
-    FOR INSERT WITH CHECK (
-        auth.uid() = sender_id AND
-        EXISTS (
-            SELECT 1 FROM public.conversations c
-            JOIN public.matches m ON c.match_id = m.id
-            WHERE c.id = conversation_id 
-            AND (m.user1_id = auth.uid() OR m.user2_id = auth.uid())
-        )
-    );
-
-CREATE POLICY "Users can update own messages" ON public.messages
-    FOR UPDATE USING (auth.uid() = sender_id);
-
--- Subscriptions policies
-CREATE POLICY "Users can view own subscriptions" ON public.subscriptions
-    FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can manage own subscriptions" ON public.subscriptions
-    FOR ALL USING (auth.uid() = user_id);
-
--- Reports policies
-CREATE POLICY "Users can create reports" ON public.reports
-    FOR INSERT WITH CHECK (auth.uid() = reporter_id);
-
-CREATE POLICY "Users can view own reports" ON public.reports
-    FOR SELECT USING (auth.uid() = reporter_id);
-
--- Blocked users policies
-CREATE POLICY "Users can manage own blocks" ON public.blocked_users
-    FOR ALL USING (auth.uid() = blocker_id);
-
--- Notifications policies
-CREATE POLICY "Users can manage own notifications" ON public.notifications
-    FOR ALL USING (auth.uid() = user_id);
-
--- User activity policies
-CREATE POLICY "Users can view own activity" ON public.user_activity
-    FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own activity" ON public.user_activity
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- =============================================
--- FUNCTIONS & TRIGGERS
--- =============================================
-
--- Function to update updated_at timestamp
+-- Function to update profile updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- Triggers for updated_at
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON public.user_preferences 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON public.conversations 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_subscriptions_updated_at BEFORE UPDATE ON public.subscriptions 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Function to create match when mutual like occurs
-CREATE OR REPLACE FUNCTION check_for_match()
-RETURNS TRIGGER AS $$
-DECLARE
-    mutual_like_exists BOOLEAN;
-    new_match_id UUID;
-BEGIN
-    -- Only proceed if this is a like
-    IF NEW.is_like = true THEN
-        -- Check if the other user has also liked this user
-        SELECT EXISTS(
-            SELECT 1 FROM public.swipes 
-            WHERE swiper_id = NEW.swiped_id 
-            AND swiped_id = NEW.swiper_id 
-            AND is_like = true
-        ) INTO mutual_like_exists;
-        
-        -- If mutual like exists, create a match
-        IF mutual_like_exists THEN
-            INSERT INTO public.matches (user1_id, user2_id)
-            VALUES (
-                LEAST(NEW.swiper_id, NEW.swiped_id),
-                GREATEST(NEW.swiper_id, NEW.swiped_id)
-            )
-            ON CONFLICT (user1_id, user2_id) DO NOTHING
-            RETURNING id INTO new_match_id;
-            
-            -- Create conversation for the match
-            IF new_match_id IS NOT NULL THEN
-                INSERT INTO public.conversations (match_id)
-                VALUES (new_match_id);
-            END IF;
-        END IF;
-    END IF;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Trigger for match creation
-CREATE TRIGGER create_match_on_mutual_like 
-    AFTER INSERT ON public.swipes
-    FOR EACH ROW EXECUTE FUNCTION check_for_match();
-
--- Function to update user's last_active_at
-CREATE OR REPLACE FUNCTION update_last_active()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE public.users 
-    SET last_active_at = NOW() 
-    WHERE id = auth.uid();
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- =============================================
--- SAMPLE DATA INSERTS
--- =============================================
-
--- Insert sample interests
-INSERT INTO public.interests (name, category) VALUES
-    ('Photography', 'Creative'),
-    ('Hiking', 'Outdoors'),
-    ('Cooking', 'Lifestyle'),
-    ('Travel', 'Lifestyle'),
-    ('Reading', 'Intellectual'),
-    ('Fitness', 'Health'),
-    ('Music', 'Creative'),
-    ('Dancing', 'Creative'),
-    ('Gaming', 'Entertainment'),
-    ('Movies', 'Entertainment');
-
--- =============================================
--- HELPER VIEWS
--- =============================================
-
--- View for user profiles with photo count
-CREATE VIEW public.user_profiles AS
-SELECT 
-    u.*,
-    (SELECT COUNT(*) FROM public.user_photos WHERE user_id = u.id) as photo_count,
-    (SELECT photo_url FROM public.user_photos WHERE user_id = u.id AND is_primary = true LIMIT 1) as primary_photo,
-    EXTRACT(YEAR FROM AGE(u.date_of_birth)) as age
-FROM public.users u
-WHERE u.is_active = true AND u.is_banned = false;
-
--- View for match details
-CREATE VIEW public.match_details AS
-SELECT 
-    m.*,
-    u1.first_name as user1_name,
-    u2.first_name as user2_name,
-    (SELECT COUNT(*) FROM public.messages msg 
-     JOIN public.conversations c ON msg.conversation_id = c.id 
-     WHERE c.match_id = m.id) as message_count
-FROM public.matches m
-JOIN public.users u1 ON m.user1_id = u1.id
-JOIN public.users u2 ON m.user2_id = u2.id;
-
--- =============================================
--- SECURITY FUNCTIONS
--- =============================================
-
--- Function to check if user can see another user (not blocked)
-CREATE OR REPLACE FUNCTION can_see_user(target_user_id UUID)
-RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN NOT EXISTS (
-        SELECT 1 FROM public.blocked_users 
-        WHERE (blocker_id = auth.uid() AND blocked_id = target_user_id)
-           OR (blocker_id = target_user_id AND blocked_id = auth.uid())
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Add additional policies using the security function
-CREATE POLICY "Users cannot see blocked users" ON public.users
-    FOR SELECT USING (can_see_user(id));
-
--- =============================================
--- PERFORMANCE OPTIMIZATION
--- =============================================
-
--- Partial indexes for active users only
-CREATE INDEX idx_users_active_location ON public.users USING GIST(location) 
-WHERE is_active = true AND is_banned = false;
-
-CREATE INDEX idx_users_active_gender_age ON public.users(gender, date_of_birth) 
-WHERE is_active = true AND is_banned = false;
-
--- Index for matching algorithm
-CREATE INDEX idx_potential_matches ON public.users(id, gender, date_of_birth, location) 
-WHERE is_active = true AND is_banned = false;
-
--- =============================================
--- CLEANUP FUNCTIONS
--- =============================================
-
--- Function to soft delete inactive users
-CREATE OR REPLACE FUNCTION cleanup_inactive_users()
-RETURNS INTEGER AS $$
-DECLARE
-    deleted_count INTEGER;
-BEGIN
-    UPDATE public.users 
-    SET is_active = false 
-    WHERE last_active_at < NOW() - INTERVAL '6 months'
-    AND is_active = true;
-    
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RETURN deleted_count;
+  NEW.updated_at = NOW();
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Trigger to update updated_at on profile changes
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

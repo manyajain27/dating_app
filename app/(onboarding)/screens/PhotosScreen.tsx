@@ -1,17 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Image, Alert
-} from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import PhotoTipsModal from '../components/PhotoTipsModal';
 import { ScreenProps } from '../types/FormData';
-import PhotoTipsModal from '../components/PhotoTipsModal'; // modal with tips
 
 const MAX_PHOTOS = 6;
 
-const PhotosScreen = ({ formData, updateFormData, nextStep, prevStep }: ScreenProps) => {
+const PhotosScreen: React.FC<ScreenProps> = ({
+  formData,
+  updateFormData,
+  prevStep,
+  handleComplete,
+  isSaving
+}) => {
   const [photos, setPhotos] = useState<string[]>(formData.photos || []);
   const [showTips, setShowTips] = useState(false);
 
@@ -26,25 +37,25 @@ const PhotosScreen = ({ formData, updateFormData, nextStep, prevStep }: ScreenPr
       Alert.alert("Permission required", "We need access to your gallery to continue.");
       return;
     }
-  
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      allowsMultipleSelection: true, // ✅ enable multiple selection
+      allowsMultipleSelection: true,
       quality: 1,
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
     });
-  
+
     if (!result.canceled && result.assets.length > 0) {
       const newPhotos = result.assets
         .map(asset => asset.uri)
-        .filter(uri => uri); // filter out invalid URIs
-  
+        .filter(uri => uri);
+
       const total = photos.length + newPhotos.length;
-  
+
       if (total > MAX_PHOTOS) {
         Alert.alert('Limit reached', `You can only upload ${MAX_PHOTOS} photos total.`);
         return;
       }
-  
+
       const updatedPhotos = [...photos, ...newPhotos].slice(0, MAX_PHOTOS);
       setPhotos(updatedPhotos);
       updateFormData('photos', updatedPhotos);
@@ -89,7 +100,7 @@ const PhotosScreen = ({ formData, updateFormData, nextStep, prevStep }: ScreenPr
             }
             return (
               <View style={styles.imageBox}>
-                <Image source={{ uri: item as string}} style={styles.image} />
+                <Image source={{ uri: item as string }} style={styles.image} />
                 <TouchableOpacity style={styles.removeButton} onPress={() => removePhoto(index)}>
                   <Ionicons name="close-circle" size={22} color="#ff6666" />
                 </TouchableOpacity>
@@ -105,11 +116,15 @@ const PhotosScreen = ({ formData, updateFormData, nextStep, prevStep }: ScreenPr
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.continueBtn, photos.length > 0 && styles.continueBtnActive]}
-          disabled={photos.length === 0}
-          onPress={nextStep}
+          disabled={photos.length === 0 || isSaving}
+          onPress={handleComplete}
         >
-          <Text style={styles.continueText}>continue</Text>
-          <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 6 }} />
+          <Text style={styles.continueText}>
+            {isSaving ? 'saving...' : 'continue'}
+          </Text>
+          {!isSaving && (
+            <Ionicons name="arrow-forward" size={20} color="#000" style={{ marginLeft: 6 }} />
+          )}
         </TouchableOpacity>
       </View>
     </View>
