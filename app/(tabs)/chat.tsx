@@ -1,13 +1,9 @@
-import React from 'react'
-import { Text } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+// app/(tabs)/chat.tsx
+import React from 'react';
+import ChatListScreen from '@/screens/ChatListScreen';
 
 const ChatScreen = () => {
-  return (
-    <SafeAreaView className='flex-1 items-center'>
-      <Text>ChatScreen</Text>
-    </SafeAreaView>
-  )
-}
+  return <ChatListScreen />;
+};
 
-export default ChatScreen
+export default ChatScreen;

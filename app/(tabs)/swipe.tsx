@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import MatchScreen from '@/screens/MatchScreen'
 import { useAuthStore } from '@/store/authStore'
 import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
@@ -10,7 +11,11 @@ import { Animated, Dimensions, Easing, StyleSheet, Text, TouchableOpacity, View 
 import Swiper from 'react-native-deck-swiper'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { ScaledSheet, s, vs } from 'react-native-size-matters'
+
+
+// --- DIMENSIONS ---
 const { width, height } = Dimensions.get('window')
+
 
 
 // --- TYPE DEFINITIONS ---
@@ -20,148 +25,10 @@ interface Profile {
   age: number
   bio: string
   distance: string
+  height?: string
   image: string
   interests: string[]
 }
-
-// --- SAMPLE DATA ---
-// const profiles: Profile[] = [
-//   {
-//     id: 1,
-//     name: 'Sarah',
-//     age: 24,
-//     bio: 'Love hiking and coffee ☕',
-//     distance: '2 miles away',
-//     image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8cHJvZmlsZXxlbnwwfHwwfHx8MA%3D%3D',
-//     interests: ['Photography', 'Travel', 'Music']
-//   },
-//   {
-//     id: 2,
-//     name: 'Emma',
-//     age: 26,
-//     bio: 'Artist and dog lover 🎨🐕',
-//     distance: '5 miles away',
-//     image: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Art', 'Dogs', 'Yoga']
-//   },
-//   {
-//     id: 3,
-//     name: 'Jessica',
-//     age: 23,
-//     bio: 'Foodie and adventure seeker 🍕✈️',
-//     distance: '3 miles away',
-//     image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Food', 'Adventure', 'Books']
-//   },
-//   {
-//     id: 4,
-//     name: 'Maya',
-//     age: 28,
-//     bio: 'Fitness enthusiast 💪',
-//     distance: '1 mile away',
-//     image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Fitness', 'Cooking', 'Dancing']
-//   },
-//   {
-//     id: 5,
-//     name: 'Zoe',
-//     age: 25,
-//     bio: 'Nature lover and photographer 📸🌿',
-//     distance: '4 miles away',
-//     image: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Nature', 'Photography', 'Hiking']
-//   },
-//   {
-//     id: 6,
-//     name: 'Lily',
-//     age: 27,
-//     bio: 'Part-time writer, full-time dreamer ✨',
-//     distance: '6 miles away',
-//     image: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Writing', 'Books', 'Jazz']
-//   },
-//   {
-//     id: 7,
-//     name: 'Chloe',
-//     age: 22,
-//     bio: 'Design is my love language 💜',
-//     distance: '3 miles away',
-//     image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Design', 'Coffee', 'Running']
-//   },
-//   {
-//     id: 8,
-//     name: 'Isabella',
-//     age: 29,
-//     bio: 'Engineer with a passion for sustainability 🌱',
-//     distance: '2 miles away',
-//     image: 'https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Tech', 'Nature', 'Climbing']
-//   },
-//   {
-//     id: 9,
-//     name: 'Ava',
-//     age: 24,
-//     bio: 'I bake, I dance, I binge K-dramas 🧁💃',
-//     distance: '5 miles away',
-//     image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Baking', 'Dancing', 'K-Dramas']
-//   },
-//   {
-//     id: 10,
-//     name: 'Nina',
-//     age: 26,
-//     bio: 'World explorer. Ask me where I\'ve been! 🗺️',
-//     distance: '4 miles away',
-//     image: 'https://images.unsplash.com/photo-1552058544-f2b08422138a?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Travel', 'Photography', 'Vlogging']
-//   },
-//   {
-//     id: 11,
-//     name: 'Olivia',
-//     age: 28,
-//     bio: 'Yoga instructor with a soft spot for poetry 🧘‍♀️📖',
-//     distance: '2 miles away',
-//     image: 'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Yoga', 'Poetry', 'Tea']
-//   },
-//   {
-//     id: 12,
-//     name: 'Mila',
-//     age: 25,
-//     bio: 'Craft beer snob and board game champion 🍺🎲',
-//     distance: '3 miles away',
-//     image: 'https://images.unsplash.com/photo-1557053910-d9eadeed1c58?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Board Games', 'Craft Beer', 'Trivia']
-//   },
-//   {
-//     id: 13,
-//     name: 'Sophia',
-//     age: 23,
-//     bio: 'I code by day and paint by night 💻🎨',
-//     distance: '1 mile away',
-//     image: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Coding', 'Painting', 'Gaming']
-//   },
-//   {
-//     id: 14,
-//     name: 'Ella',
-//     age: 30,
-//     bio: 'Plant mom 🌱 | Cat whisperer 🐱',
-//     distance: '5 miles away',
-//     image: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Gardening', 'Cats', 'Podcasts']
-//   },
-//   {
-//     id: 15,
-//     name: 'Grace',
-//     age: 27,
-//     bio: 'Let\'s talk films, feelings, and food 🍿💭',
-//     distance: '6 miles away',
-//     image: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=600&fit=crop&crop=face',
-//     interests: ['Cinema', 'Cooking', 'Philosophy']
-//   }
-// ]
 
 // --- MAIN COMPONENT ---
 const SwipeScreen: React.FC = () => {
@@ -182,8 +49,82 @@ const SwipeScreen: React.FC = () => {
   const headerScale = useRef(new Animated.Value(1)).current
   const headerOpacity = useRef(new Animated.Value(1)).current
   const isButtonTriggeredRef = useRef(false);
+  const [matchedProfile, setMatchedProfile] = useState<Profile | null>(null);
+
 
   const { user, initialized, loading } = useAuthStore()
+
+
+useEffect(() => {
+  if (!user?.id) return;
+
+  console.log('Setting up realtime listener for user:', user.id);
+
+  const channel = supabase
+    .channel('match-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'matches',
+      },
+      async (payload) => {
+        console.log('Received match payload:', payload);
+        const { user1_id, user2_id } = payload.new;
+
+        // Don't process if we already have a matched profile showing
+        if (matchedProfile) {
+          console.log('Already showing a match, ignoring');
+          return;
+        }
+
+        if (user.id === user1_id || user.id === user2_id) {
+          console.log('Match involves current user!');
+          
+          const otherUserId = user.id === user1_id ? user2_id : user1_id;
+          console.log('Fetching profile for user:', otherUserId);
+
+          const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('id, name, age, bio, profile_pictures, interests, height')
+            .eq('id', otherUserId)
+            .single();
+
+          console.log('Profile data:', profileData, 'Error:', error);
+
+          if (error || !profileData) {
+            console.error('Error fetching matched user profile:', error);
+            return;
+          }
+
+          const matchedProfileData: Profile = {
+            id: profileData.id,
+            name: profileData.name || 'Unknown', // Fix null name
+            age: profileData.age,
+            bio: profileData.bio,
+            distance: '',
+            height: profileData.height?.toString(),
+            image: profileData.profile_pictures?.[0] || '',
+            interests: profileData.interests || [],
+          };
+
+          console.log('Setting matched profile:', matchedProfileData);
+          setMatchedProfile(matchedProfileData);
+        }
+      }
+    );
+
+  channel.subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [user?.id, matchedProfile]); // Add matchedProfile as dependency
+
+useEffect(() => {
+  console.log('matchedProfile state changed:', matchedProfile);
+}, [matchedProfile]);
 
 
 
@@ -270,8 +211,9 @@ const onSwipedLeft = (index: number) => {
   isButtonTriggeredRef.current = false;
   onSwiped(index);
 };
-
 const onSwipedRight = (index: number) => {
+  const swipedUserId = profiles[index]?.id;
+  insertSwipe(swipedUserId, true, false);
   if (!isButtonTriggeredRef.current) {
     showSwipeFeedback('right', profiles[index].name);
   }
@@ -280,11 +222,34 @@ const onSwipedRight = (index: number) => {
 };
 
 const onSwipedTop = (index: number) => {
+  const swipedUserId = profiles[index]?.id;
+  insertSwipe(swipedUserId, true, true);
   if (!isButtonTriggeredRef.current) {
     showSwipeFeedback('top', profiles[index].name);
   }
   isButtonTriggeredRef.current = false;
   onSwiped(index);
+};
+
+
+const insertSwipe = async (
+  swipedProfileId: string,
+  isLike: boolean,
+  isSuperLike: boolean = false
+) => {
+  if (!user?.id || !swipedProfileId) return;
+
+  const { error } = await supabase.from('swipes').upsert({
+    swiper_id: user.id,
+    swiped_id: swipedProfileId,
+    is_like: isLike,
+    is_super_like: isSuperLike,
+    swiped_at: new Date().toISOString()
+  });
+
+  if (error) {
+    console.error('Error inserting swipe:', error);
+  }
 };
 
 
@@ -451,37 +416,32 @@ const swipeTop = () => {
   );
 }
 
+if (matchedProfile) {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <MatchScreen
+          profile={matchedProfile}
+          userImage={user?.user_metadata?.avatar_url}
+          userName={user?.user_metadata?.name || 'You'}
+          onClose={() => setMatchedProfile(null)}
+      />
+    </View>
+  );
+}
+
 if (swipedAll || profiles.length === 0) {
-    return (
-      <View style={styles.completedContainer}>
-        <StatusBar style="light" />
-        <Animated.View style={[styles.completedEmojiContainer, {
-          transform: [{
-            scale: scaleAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 1]
-            })
-          }]
-        }]}>
-          <Text style={styles.completedEmoji}>🎉</Text>
-        </Animated.View>
-        <Text style={styles.completedTitle}>All Profiles Viewed</Text>
-        <Text style={styles.completedSubtitle}>You've reached the end of the list. Check back later for new profiles.</Text>
-        <TouchableOpacity 
-          style={styles.resetButton} 
-          onPress={resetDeck}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.resetButtonText}>Start Over</Text>
-        </TouchableOpacity>
-      </View>
-    )
-  }
+  return (
+    <View style={styles.completedContainer}>
+      <Text style={styles.completedTitle}>All Profiles Viewed</Text>
+    </View>
+  );
+}
+
+
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      
       {/* Background with smooth transition */}
       <Animated.View style={[styles.backgroundContainer]}>
         <Image
@@ -546,33 +506,12 @@ if (swipedAll || profiles.length === 0) {
             stackScale={5}
             stackSeparation={14}
             disableBottomSwipe
+            disableTopSwipe={!!matchedProfile}
+            disableLeftSwipe={!!matchedProfile}
+            disableRightSwipe={!!matchedProfile}
             animateOverlayLabelsOpacity
             horizontalThreshold={ 50 }
             verticalThreshold={ 50 }
-            overlayLabels={{
-              left: { 
-                title: 'PASS', 
-                style: { 
-                  label: styles.overlayLabel, 
-                  wrapper: styles.overlayWrapper 
-                } 
-              },
-              right: { 
-                title: 'LIKE', 
-                style: { 
-                  label: { ...styles.overlayLabel, ...styles.likeLabel }, 
-                  wrapper: styles.overlayWrapper 
-                } 
-              },
-              top: {
-                title: 'SUPER LIKE',
-                style: {
-                  label: { ...styles.overlayLabel, ...styles.superLikeLabel },
-                  wrapper: styles.overlayWrapper
-                }
-              }
-            }}
-            overlayOpacityHorizontalThreshold={10}
             swipeAnimationDuration={400}
           />
         </View>

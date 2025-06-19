@@ -70,6 +70,11 @@ const TabsLayout = () => {
               ),
               }} 
           />
+          <Tabs.Screen name="chat/[id]"
+          options={{
+            tabBarButton: () => null, // Hide tab bar button for chat detail screens
+          }}
+          />
       </Tabs>
     </AuthGuard>
   )
