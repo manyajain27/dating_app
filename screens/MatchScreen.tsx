@@ -16,11 +16,11 @@ interface Profile {
   height?: string;
   image: string;
   interests: string[];
-  match_id?: string; // Add match_id to the interface
+  match_id?: string;
 }
 
 interface MatchScreenProps {
-  profile: Profile; // Incoming matched profile
+  profile: Profile;
   onClose: () => void;
 }
 
@@ -198,14 +198,7 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   avatarGlow: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FF1493',
-    opacity: 0.2,
-    top: 0,
-    left: 0,
+    // Optional glow effect - commented out for now
   },
   heartContainer: {
     marginHorizontal: 25,

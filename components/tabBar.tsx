@@ -1,5 +1,6 @@
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useLinkBuilder } from '@react-navigation/native';
+import { usePathname } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Animated, {
@@ -8,6 +9,7 @@ import Animated, {
   withSpring
 } from 'react-native-reanimated';
 import TabBarButton from './TabBarButton';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -22,7 +24,7 @@ const SPRING_CONFIG = {
 
 const TAB_BAR_MARGIN = 0.1;
 const INDICATOR_MARGIN = 12;
-  const INDICATOR_SIZE = 55; // Fixed size for perfect circle
+const INDICATOR_SIZE = 55; // Fixed size for perfect circle
 
 interface TabBarDimensions {
   height: number;
@@ -30,7 +32,20 @@ interface TabBarDimensions {
 }
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const pathname = usePathname();
+
   const { buildHref } = useLinkBuilder();
+  
+  // Filter out nested routes - only show main tab routes
+  const mainTabRoutes = state.routes.filter(route => {
+    const routeName = route.name;
+    // Only include routes that don't have nested paths (no slashes) or dynamic segments
+    return !routeName.includes('/') && !routeName.includes('[');
+  });
+
+  // Get the active index relative to main tabs only
+  const activeMainTabIndex = mainTabRoutes.findIndex(route => route.key === state.routes[state.index].key);
+  const currentMainTabIndex = activeMainTabIndex >= 0 ? activeMainTabIndex : 0;
   
   // Initialize with reasonable defaults to prevent division by zero
   const [dimensions, setDimensions] = useState<TabBarDimensions>({
@@ -40,16 +55,16 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   
   const [isLayoutReady, setIsLayoutReady] = useState(false);
 
-  const buttonWidth = dimensions.width / state.routes.length;
+  const buttonWidth = dimensions.width / mainTabRoutes.length;
   const tabPositionX = useSharedValue(0);
 
   // Initialize tab position when component mounts or active tab changes
   useEffect(() => {
     if (isLayoutReady && buttonWidth > 0) {
-      const targetPosition = buttonWidth * state.index;
+      const targetPosition = buttonWidth * currentMainTabIndex;
       tabPositionX.value = withSpring(targetPosition, SPRING_CONFIG);
     }
-  }, [state.index, buttonWidth, isLayoutReady]);
+  }, [currentMainTabIndex, buttonWidth, isLayoutReady]);
 
   const onTabbarLayout = useCallback((e: LayoutChangeEvent) => {
     const { height, width } = e.nativeEvent.layout;
@@ -84,11 +99,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         canPreventDefault: true,
       });
 
-      if (state.index !== index && !event.defaultPrevented) {
+      if (currentMainTabIndex !== index && !event.defaultPrevented) {
         navigation.navigate(route.name, route.params);
       }
     };
-  }, [buttonWidth, navigation, state.index, tabPositionX]);
+  }, [buttonWidth, navigation, currentMainTabIndex, tabPositionX]);
 
   const handleTabLongPress = useCallback((route: any) => {
     return () => {
@@ -98,6 +113,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       });
     };
   }, [navigation]);
+
+  if (pathname.startsWith('/chat/') && pathname !== '/chat') {
+    return null;
+  }
+
 
   // Don't render until layout is ready to prevent flashing
   if (!isLayoutReady) {
@@ -134,11 +154,11 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         pointerEvents="none"
       />
 
-      {/* Tab Buttons */}
-      {state.routes.map((route, index) => {
+      {/* Tab Buttons - Only render main tab routes */}
+      {mainTabRoutes.map((route, index) => {
         const { options } = descriptors[route.key];
         const label = options.tabBarLabel ?? options.title ?? route.name;
-        const isFocused = state.index === index;
+        const isFocused = currentMainTabIndex === index;
 
         return (
           <TabBarButton
@@ -172,7 +192,6 @@ const styles = StyleSheet.create({
     },
     shadowRadius: 10,
     shadowOpacity: 0.1,
-    elevation: 10, // Android shadow
   },
   indicator: {
     position: 'absolute',
