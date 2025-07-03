@@ -1,14 +1,13 @@
-
 export interface IFormData {
     name: string;
-    dob: string;
+    dob: string;  // Used in onboarding flow, maps to date_of_birth in DB
     gender: string;
     height: string;
     education: string;
-    starSign: string;
-    believesInStarSigns?: 'yes' | 'no' | 'kinda'; 
-    lookingFor: string[];
-    photos: string[];
+    starSign: string;  // Maps to star_sign in DB
+    believesInStarSigns?: 'yes' | 'no' | 'kinda';  // Maps to believes_in_star_signs in DB
+    lookingFor: string[];  // Maps to looking_for in DB
+    photos: string[];  // Maps to profile_pictures in DB
     location_city: string;
     interests: string[];
     teasers: Record<string, string>;
@@ -41,8 +40,8 @@ export const TEASER_CATEGORIES: TeaserCategory[] = [
       title: 'vibe check',
       teasers: [
         'friday night means...',
-        'you’ll always catch me...',
-        'i’m most myself when...',
+        'you\'ll always catch me...',
+        'i\'m most myself when...',
         'my toxic trait is...',
         'i judge people for...',
       ],
@@ -65,7 +64,7 @@ export const TEASER_CATEGORIES: TeaserCategory[] = [
         'unpopular opinion:...',
         'dating apps would be better if...',
         'cancel me for this but i...',
-        'i don’t trust people who...',
+        'i don\'t trust people who...',
         'this gives me the ick...',
       ],
     },
@@ -76,7 +75,7 @@ export const TEASER_CATEGORIES: TeaserCategory[] = [
         'something i wish more people asked me...',
         'a moment that changed me...',
         'i overthink about...',
-        'what i’ve unlearned recently...',
+        'what i\'ve unlearned recently...',
         'i feel most alive when...',
       ],
     },
@@ -87,9 +86,30 @@ export const TEASER_CATEGORIES: TeaserCategory[] = [
         'i pretend to hate it but i love...',
         'i rewatch this way too often...',
         'my search history would expose...',
-        'i’d risk it all for...',
+        'i\'d risk it all for...',
         'this makes me feel instantly better...',
       ],
     },
   ];
+  
+// Example teaser prompts
+export const TEASER_PROMPTS = [
+  'friday night means...',
+  "you'll always catch me...",
+  "i'm most myself when...",
+  'my toxic trait is...',
+  'i judge people for...',
+  'dating apps would be better if...',
+  'cancel me for this but i...',
+  "i don't trust people who...",
+  'this gives me the ick...',
+  'a moment that changed me...',
+  'i overthink about...',
+  "what i've unlearned recently...",
+  'i feel most alive when...',
+  'i rewatch this way too often...',
+  'my search history would expose...',
+  "i'd risk it all for...",
+  'this makes me feel instantly better...'
+];
   

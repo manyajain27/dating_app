@@ -33,6 +33,7 @@ interface TabBarDimensions {
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
+  console.log('Current pathname in TabBar:', pathname);
 
   const { buildHref } = useLinkBuilder();
   
@@ -118,6 +119,19 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     return null;
   }
 
+  if (pathname.startsWith('/profile')) {
+    return null; 
+  }
+
+  // Hide tab bar for top-level dynamic [id].tsx routes (e.g., /<uuid>)
+  // Exclude main tab routes that might coincidentally match the pattern (e.g., /home, /chat)
+  const isTopLevelDynamicRoute = 
+    pathname.match(/^\/([^\/]+)$/) && // Matches /anything but not /anything/else
+    !['/home', '/chat', '/swipe', '/likes'].includes(pathname); // Exclude known tab names
+
+  if (isTopLevelDynamicRoute) {
+    return null;
+  }
 
   // Don't render until layout is ready to prevent flashing
   if (!isLayoutReady) {
@@ -157,7 +171,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       {/* Tab Buttons - Only render main tab routes */}
       {mainTabRoutes.map((route, index) => {
         const { options } = descriptors[route.key];
-        const label = options.tabBarLabel ?? options.title ?? route.name;
+        const label = String(options.tabBarLabel ?? options.title ?? route.name); // Ensure label is string
         const isFocused = currentMainTabIndex === index;
 
         return (

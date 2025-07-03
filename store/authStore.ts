@@ -1,40 +1,36 @@
 // store/authStore.ts
-import { create } from 'zustand';
 import { Session, User } from '@supabase/supabase-js';
+import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 
 // Updated Profile interface to match form data
 interface Profile {
   id: string;
   email: string;
-  name?: string; // Single name field to match form
-  first_name?: string; // Keep for backward compatibility
-  last_name?: string;
-  bio?: string;
-  age?: number;
-  date_of_birth?: string; // Add DOB field
-  gender?: string;
-  interested_in?: string;
-  star_sign?: string; // Add star sign
-  believes_in_star_signs?: 'yes' | 'no' | 'kinda'; // Add belief in star signs
-  location_city?: string;
-  location_state?: string;
-  location_country?: string;
-  location?: string; // Add single location field to match form
-  profile_pictures?: string[];
-  photos?: string[]; // Alias for profile_pictures to match form
-  interests?: string[];
-  occupation?: string;
-  education?: string;
-  height?: string; // Changed to string to match form
-  looking_for?: string[]; // Changed to array to match form
-  children?: string; // Add children field
-  teasers?: Record<string, string>; // Add teasers field
-  is_verified?: boolean;
-  is_premium?: boolean;
-  last_active?: string;
-  created_at?: string;
-  updated_at?: string;
+  name: string;
+  bio: string;
+  age: number;
+  gender: string;
+  interested_in: string;
+  location_city: string;
+  location_state: string;
+  location_country: string;
+  profile_pictures: string[];
+  interests: string[];
+  occupation: string;
+  education: string;
+  height: string;
+  looking_for: string;
+  is_verified: boolean;
+  is_premium: boolean;
+  last_active: string;
+  created_at: string;
+  updated_at: string;
+  date_of_birth: string;
+  star_sign: string;
+  believes_in_star_signs: string;
+  children: string;
+  teasers: Record<string, string>;
 }
 
 interface AuthState {

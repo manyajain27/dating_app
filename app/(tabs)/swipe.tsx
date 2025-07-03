@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { BlurView } from 'expo-blur'
 import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Dimensions, Easing, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
@@ -20,14 +21,18 @@ const { width, height } = Dimensions.get('window')
 
 // --- TYPE DEFINITIONS ---
 interface Profile {
-  id: number
-  name: string
-  age: number
-  bio: string
-  distance: string
-  height?: string
-  image: string
-  interests: string[]
+  id: string;
+  name: string;
+  age: number;
+  bio: string;
+  location_city: string;
+  location_state: string;
+  location_country: string;
+  height: string;
+  profile_pictures: string[];
+  interests: string[];
+  education: string;
+  occupation: string;
 }
 
 // --- MAIN COMPONENT ---
@@ -42,10 +47,23 @@ const SwipeScreen: React.FC = () => {
   const scaleAnim = useRef(new Animated.Value(1)).current
   const buttonScale = useRef(new Animated.Value(1)).current
   const superLikeButtonScale = useRef(new Animated.Value(1)).current
-  const currentProfile = profiles[cardIndex] || { name: '', image: '', age: 0, bio: '', distance: '', interests: [] }
+  const currentProfile = profiles[cardIndex] || {
+    id: '',
+    name: '',
+    age: 0,
+    bio: '',
+    location_city: '',
+    location_state: '',
+    location_country: '',
+    height: '',
+    profile_pictures: [],
+    interests: [],
+    education: '',
+    occupation: ''
+  };
   const [headerFeedback, setHeaderFeedback] = useState<{ text: string; name?: string } | null>({
     text: 'Discover',
-  })
+  });
   const headerScale = useRef(new Animated.Value(1)).current
   const headerOpacity = useRef(new Animated.Value(1)).current
   const isButtonTriggeredRef = useRef(false);
@@ -99,14 +117,18 @@ useEffect(() => {
           }
 
           const matchedProfileData: Profile = {
-            id: profileData.id,
-            name: profileData.name || 'Unknown', // Fix null name
+            id: profileData.id.toString(),
+            name: profileData.name || 'Unknown',
             age: profileData.age,
-            bio: profileData.bio,
-            distance: '',
-            height: profileData.height?.toString(),
-            image: profileData.profile_pictures?.[0] || '',
+            bio: profileData.bio || '',
+            location_city: '',
+            location_state: '',
+            location_country: '',
+            height: profileData.height?.toString() || '',
+            profile_pictures: profileData.profile_pictures || [],
             interests: profileData.interests || [],
+            education: '',
+            occupation: '',
           };
 
           console.log('Setting matched profile:', matchedProfileData);
@@ -144,19 +166,23 @@ useEffect(() => {
     }
 
     const formatted = data.map(p => ({
-      id: p.id,
+      id: p.id.toString(),
       name: p.name,
       age: p.age,
       bio: p.bio,
-      height: p.height,
-      distance: `${Math.floor(Math.random() * 6) + 1} miles away`,
-      image: p.profile_pictures?.[0] || '',
+      location_city: p.location_city || '',
+      location_state: '',
+      location_country: '',
+      height: p.height || '',
+      profile_pictures: p.profile_pictures || [],
       interests: p.interests || [],
+      education: '',
+      occupation: '',
     }))
 
 
     setProfiles(formatted)
-    if (formatted.length > 0) setCurrentImage(formatted[0].image)
+    if (formatted.length > 0) setCurrentImage(formatted[0].profile_pictures[0])
   }
 
   fetchProfiles()
@@ -166,7 +192,7 @@ useEffect(() => {
 
   useEffect(() => {
   if (profiles.length > 0 && cardIndex + 1 < profiles.length) {
-    Image.prefetch(profiles[cardIndex + 1].image);
+    Image.prefetch(profiles[cardIndex + 1].profile_pictures[0]);
   }
 }, [cardIndex, profiles]);
 
@@ -183,7 +209,7 @@ useEffect(() => {
     easing: Easing.out(Easing.quad)
   }).start(() => {
     // Update images and fade back in
-    setCurrentImage(profiles[index + 1]?.image || currentImage);
+    setCurrentImage(profiles[index + 1]?.profile_pictures[0] || currentImage);
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -213,7 +239,9 @@ const onSwipedLeft = (index: number) => {
 };
 const onSwipedRight = (index: number) => {
   const swipedUserId = profiles[index]?.id;
-  insertSwipe(swipedUserId, true, false);
+  if (swipedUserId) {
+    insertSwipe(swipedUserId, true, false);
+  }
   if (!isButtonTriggeredRef.current) {
     showSwipeFeedback('right', profiles[index].name);
   }
@@ -223,7 +251,9 @@ const onSwipedRight = (index: number) => {
 
 const onSwipedTop = (index: number) => {
   const swipedUserId = profiles[index]?.id;
-  insertSwipe(swipedUserId, true, true);
+  if (swipedUserId) {
+    insertSwipe(swipedUserId, true, true);
+  }
   if (!isButtonTriggeredRef.current) {
     showSwipeFeedback('top', profiles[index].name);
   }
@@ -260,7 +290,7 @@ const onSwipedAllCards = () => {
   const resetDeck = () => {
     setCardIndex(0)
     setSwipedAll(false)
-    setCurrentImage(profiles[0].image)
+    setCurrentImage(profiles[0].profile_pictures[0])
     swiperRef.current?.jumpToCardIndex(0)
   }
 
@@ -371,7 +401,7 @@ const swipeTop = () => {
     return (
       <View style={styles.card}>
         <Image
-          source={{ uri: profile.image }}
+          source={{ uri: profile.profile_pictures[0] }}
           style={styles.cardImage}
           contentFit="cover"
           transition={300}
@@ -387,10 +417,18 @@ const swipeTop = () => {
             <Text style={styles.age}>{profile.age}</Text>
           </View>
           
-          <Text style={styles.distance}>{profile.distance}</Text>
+          <Text style={styles.distance}>{profile.location_city}</Text>
 
           {profile.height && (
             <Text style={styles.height}>{profile.height}</Text>
+          )}
+
+          {profile.occupation && (
+            <Text style={styles.occupation}>{profile.occupation}</Text>
+          )}
+
+          {profile.education && (
+            <Text style={styles.education}>{profile.education}</Text>
           )}
 
           <Text style={styles.bio}>{profile.bio}</Text>
@@ -403,7 +441,6 @@ const swipeTop = () => {
             ))}
           </View>
         </View>
-
       </View>
     )
   }
@@ -421,8 +458,6 @@ if (matchedProfile) {
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <MatchScreen
           profile={matchedProfile}
-          userImage={user?.user_metadata?.avatar_url}
-          userName={user?.user_metadata?.name || 'You'}
           onClose={() => setMatchedProfile(null)}
       />
     </View>
@@ -500,6 +535,15 @@ if (swipedAll || profiles.length === 0) {
             onSwipedRight={onSwipedRight}
             onSwipedTop={onSwipedTop}
             onSwipedAll={onSwipedAllCards}
+            onTapCard={(cardIndex) => {
+              const profile = profiles[cardIndex];
+              if (profile) {
+                router.push({
+                  pathname: "/[id]",
+                  params: { id: profile.id }
+                });
+              }
+            }}
             cardIndex={cardIndex}
             backgroundColor="transparent"
             stackSize={3}
@@ -832,6 +876,18 @@ const styles = ScaledSheet.create({
     textShadowColor: 'rgba(92, 219, 255, 0.5)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
+  },
+  occupation: {
+    fontSize: s(14),
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+    marginBottom: vs(5),
+  },
+  education: {
+    fontSize: s(14),
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+    marginBottom: vs(5),
   },
 });
 

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import * as ImagePicker from 'expo-image-picker';
+import { decode } from 'base64-arraybuffer';
 
 // --- INTERFACES ---
 export interface Message {
@@ -8,14 +10,18 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   content: string;
-  message_type: 'text' | 'image' | 'video' | 'audio';
+  message_type: 'text' | 'image' | 'video' | 'audio' | 'teaser_reply';
   is_read: boolean;
   created_at: string;
+  image_url?: string; // Add image_url field
   sender?: {
     id: string;
     name: string;
     profile_pictures: string[];
   };
+  metadata?: {
+    teaser?: string;
+  }
 }
 
 export interface Conversation {
@@ -32,7 +38,6 @@ export interface Conversation {
   unread_count: number;
 }
 
-
 // --- STORE STATE & ACTIONS ---
 interface ChatState {
   conversations: Conversation[];
@@ -41,13 +46,15 @@ interface ChatState {
   loading: boolean;
   channels: RealtimeChannel[];
   currentUserId: string | null;
+  uploadingImages: { [messageId: string]: boolean }; // Track image upload progress
 }
 
 interface ChatActions {
   init: (userId: string) => void;
   fetchConversations: () => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
-  sendMessage: (conversationId: string, content: string) => Promise<void>;
+  sendMessage: (conversationId: string, content: string, options?: { teaser?: string }) => Promise<void>;
+  sendImageMessage: (conversationId: string, imageUri: string) => Promise<void>;
   markMessagesAsRead: (conversationId: string) => Promise<void>;
   setActiveConversation: (conversationId: string | null) => void;
   cleanup: () => void;
@@ -61,6 +68,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   loading: false,
   channels: [],
   currentUserId: null,
+  uploadingImages: {},
 
   // --- ACTIONS ---
 
@@ -108,15 +116,15 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
             if (newMessage.sender_id !== state.currentUserId && state.activeConversationId !== newMessage.conversation_id) {
               convo.unread_count = (convo.unread_count || 0) + 1;
             }
-            
+
             // Update the conversations array and re-sort
             set(s => ({
               conversations: [convo!, ...s.conversations.filter(c => c.id !== newMessage.conversation_id)]
                 .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime()),
             }));
           } else {
-              // If conversation doesn't exist, fetch it
-              await state.fetchConversations();
+            // If conversation doesn't exist, fetch it
+            await state.fetchConversations();
           }
         }
       )
@@ -124,32 +132,32 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'messages' },
         (payload) => {
-            const updatedMessage = payload.new as Message;
-            const state = get();
+          const updatedMessage = payload.new as Message;
+          const state = get();
 
-            // Update read status in IndividualChatScreen
-            if (state.messages[updatedMessage.conversation_id]) {
-                set(s => ({
-                    messages: {
-                        ...s.messages,
-                        [updatedMessage.conversation_id]: s.messages[updatedMessage.conversation_id].map(m => 
-                            m.id === updatedMessage.id ? updatedMessage : m
-                        )
-                    }
-                }));
-            }
+          // Update read status in IndividualChatScreen
+          if (state.messages[updatedMessage.conversation_id]) {
+            set(s => ({
+              messages: {
+                ...s.messages,
+                [updatedMessage.conversation_id]: s.messages[updatedMessage.conversation_id].map(m =>
+                  m.id === updatedMessage.id ? updatedMessage : m
+                )
+              }
+            }));
+          }
 
-             // Update read status on ChatScreen last message
-            const convo = state.conversations.find(c => c.id === updatedMessage.conversation_id);
-            if (convo && convo.last_message?.id === updatedMessage.id) {
-                 set(s => ({
-                    conversations: s.conversations.map(c => 
-                        c.id === updatedMessage.conversation_id 
-                        ? { ...c, last_message: { ...c.last_message!, is_read: updatedMessage.is_read } }
-                        : c
-                    )
-                 }));
-            }
+          // Update read status on ChatScreen last message
+          const convo = state.conversations.find(c => c.id === updatedMessage.conversation_id);
+          if (convo && convo.last_message?.id === updatedMessage.id) {
+            set(s => ({
+              conversations: s.conversations.map(c =>
+                c.id === updatedMessage.conversation_id
+                  ? { ...c, last_message: { ...c.last_message!, is_read: updatedMessage.is_read } }
+                  : c
+              )
+            }));
+          }
         }
       )
       .subscribe();
@@ -195,7 +203,7 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      
+
       set(state => ({
         messages: { ...state.messages, [conversationId]: data || [] },
       }));
@@ -207,20 +215,20 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
   /**
    * Sends a new message and updates the conversation's last message timestamp.
    */
-  sendMessage: async (conversationId: string, content: string) => {
+  sendMessage: async (conversationId: string, content: string, options?: { teaser?: string }) => {
     const userId = get().currentUserId;
     if (!userId) return;
 
     try {
-        // We no longer need to manually add the message to the state here.
-        // The real-time 'INSERT' subscription will catch the new message
-        // from the database and add it, creating a single source of truth.
-      const { error } = await supabase.from('messages').insert({
+      const messageData: Partial<Message> = {
         conversation_id: conversationId,
         sender_id: userId,
         content,
-        message_type: 'text',
-      });
+        message_type: options?.teaser ? 'teaser_reply' : 'text',
+        metadata: options?.teaser ? { teaser: options.teaser } : undefined
+      }
+
+      const { error } = await supabase.from('messages').insert(messageData);
 
       if (error) throw error;
 
@@ -235,7 +243,70 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       throw error;
     }
   },
-  
+
+  /**
+   * Sends an image message by uploading to Supabase Storage and creating a message record.
+   */
+  sendImageMessage: async (conversationId: string, imageUri: string) => {
+    const userId = get().currentUserId;
+    if (!userId) return;
+
+    const tempMessageId = `temp_${Date.now()}_${Math.random()}`;
+
+    try {
+        set(state => ({
+            uploadingImages: { ...state.uploadingImages, [tempMessageId]: true }
+        }));
+
+        // Correctly convert image to ArrayBuffer
+        const response = await fetch(imageUri);
+        const arrayBuffer = await response.arrayBuffer(); // Directly get the ArrayBuffer
+
+        const fileExt = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+        const fileName = `${userId}_${Date.now()}.${fileExt}`;
+        const filePath = `${conversationId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('chat-images')
+            .upload(filePath, arrayBuffer, {
+                contentType: `image/${fileExt}`,
+                upsert: false
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('chat-images')
+            .getPublicUrl(filePath);
+
+        const messageData: Partial<Message> = {
+            conversation_id: conversationId,
+            sender_id: userId,
+            content: 'Image',
+            message_type: 'image',
+            image_url: publicUrl
+        };
+
+        const { error: messageError } = await supabase.from('messages').insert(messageData);
+
+        if (messageError) throw messageError;
+
+        await supabase
+            .from('conversations')
+            .update({ last_message_at: new Date().toISOString() })
+            .eq('id', conversationId);
+
+    } catch (error) {
+        console.error('Error sending image message:', error);
+        throw error;
+    } finally {
+        set(state => {
+            const newUploadingImages = { ...state.uploadingImages };
+            delete newUploadingImages[tempMessageId];
+            return { uploadingImages: newUploadingImages };
+        });
+    }
+},
   /**
    * Marks all messages in a conversation as read for the current user.
    */

@@ -1,20 +1,20 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
-import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface Profile {
   id: string;
   name: string;
   age: number;
   bio: string;
-  distance: string;
-  height?: string;
-  image: string;
+  location_city: string;
+  height: string;
+  profile_pictures: string[];
   interests: string[];
   match_id?: string;
 }
@@ -51,7 +51,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ profile: matchedProfile, onCl
           params: { 
             id: conversationId,
             userName: matchedProfile.name,
-            userImage: matchedProfile.image
+            userImage: matchedProfile.profile_pictures[0]
           }
         });
       } else {
@@ -103,7 +103,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ profile: matchedProfile, onCl
         
         <View style={styles.avatarWrapper}>
           <Image
-            source={{ uri: matchedProfile.image }}
+            source={{ uri: matchedProfile.profile_pictures[0] }}
             style={styles.avatar}
             contentFit="cover"
             cachePolicy="disk"

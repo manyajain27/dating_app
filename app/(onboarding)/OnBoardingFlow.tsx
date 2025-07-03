@@ -124,21 +124,23 @@ const saveProfileToDatabase = async (): Promise<boolean> => {
     // Prepare profile updates with proper field mapping
     const profileUpdates = {
       name: formData.name,
-      date_of_birth: formData.dob,
-      age: formData.dob ? calculateAge(formData.dob) : undefined,
+      date_of_birth: formData.date_of_birth,
+      age: formData.date_of_birth ? calculateAge(formData.date_of_birth) : undefined,
       gender: formData.gender,
-      star_sign: formData.starSign,
-      // Remove or fix this field since it's not in formData
-      // believes_in_star_signs: getStarSignBelief(),
+      star_sign: formData.star_sign,
+      believes_in_star_signs: formData.believes_in_star_signs,
       height: formData.height,
       education: formData.education,
-      // looking_for: formData.lookingFor,
+      looking_for: formData.looking_for,
       location_city: formData.location_city,
+      location_state: formData.location_state,
+      location_country: formData.location_country,
       interests: formData.interests,
       children: formData.children,
       teasers: formData.teasers,
       profile_pictures: uploadedUrls,
-      updated_at: new Date().toISOString(), // Add timestamp
+      occupation: formData.occupation,
+      updated_at: new Date().toISOString(),
     };
 
     // Remove undefined/empty values but be more specific about what to filter
