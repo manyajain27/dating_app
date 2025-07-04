@@ -1,8 +1,6 @@
-import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import * as ImagePicker from 'expo-image-picker';
-import { decode } from 'base64-arraybuffer';
+import { create } from 'zustand';
 
 // --- INTERFACES ---
 export interface Message {
@@ -57,6 +55,7 @@ interface ChatActions {
   sendImageMessage: (conversationId: string, imageUri: string) => Promise<void>;
   markMessagesAsRead: (conversationId: string) => Promise<void>;
   setActiveConversation: (conversationId: string | null) => void;
+  createConversation: (matchId: string) => Promise<string | null>;
   cleanup: () => void;
 }
 
@@ -209,6 +208,49 @@ export const useChatStore = create<ChatState & ChatActions>((set, get) => ({
       }));
     } catch (error) {
       console.error('Error fetching messages:', error);
+    }
+  },
+
+  /**
+   * Creates a new conversation for a match or returns existing conversation ID.
+   */
+  createConversation: async (matchId: string): Promise<string | null> => {
+    try {
+      // First, check if a conversation already exists for this match
+      const { data: existingConversation, error: fetchError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('match_id', matchId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        throw fetchError;
+      }
+
+      if (existingConversation) {
+        // Conversation already exists, return its ID
+        return existingConversation.id;
+      }
+
+      // Create new conversation
+      const { data: newConversation, error: createError } = await supabase
+        .from('conversations')
+        .insert({
+          match_id: matchId,
+          last_message_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (createError) throw createError;
+
+      // Refresh conversations list to include the new one
+      await get().fetchConversations();
+
+      return newConversation.id;
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      return null;
     }
   },
 

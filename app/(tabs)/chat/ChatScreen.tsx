@@ -1,47 +1,89 @@
+import StoryRail from '@/components/StoryRail';
 import { useAuthStore } from '@/store/authStore';
 import { Conversation, useChatStore } from '@/store/chatStore';
+import { useStoryStore, StoryPreview } from '@/store/storyStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 const ChatScreen: React.FC = () => {
-  const { conversations, loading, fetchConversations, init } = useChatStore();
+  // State from stores
+  const { conversations, loading: chatLoading, fetchConversations, init } = useChatStore();
   const { profile } = useAuthStore();
+  const {
+    storyPreviews,
+    myStoriesCount,
+    fetchStoryPreviews,
+    openStoryViewer,
+    loading: storiesLoading,
+  } = useStoryStore();
+
+  // Local state
   const [refreshing, setRefreshing] = useState(false);
 
+  // Initialize chat and fetch initial data
   useEffect(() => {
     if (profile?.id) {
       init(profile.id);
+      fetchStoryPreviews(profile.id);
     }
   }, [profile?.id, init]);
 
-  // Optional: refetch on focus for edge cases, but rely on real-time primarily
+  // Refetch data when the screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (profile?.id) {
         fetchConversations();
+        fetchStoryPreviews(profile.id);
       }
     }, [profile?.id])
   );
 
+  // Pull-to-refresh handler
   const handleRefresh = async () => {
+    if (!profile?.id) return;
     setRefreshing(true);
-    await fetchConversations();
+    await Promise.all([fetchConversations(), fetchStoryPreviews(profile.id)]);
     setRefreshing(false);
   };
 
+  // --- Story Handlers ---
+  const handlePressStory = (story: StoryPreview) => {
+    if (!profile?.id) return;
+    openStoryViewer(story.user_id, profile.id);
+  };
+
+  const handlePressYourStory = () => {
+    if (!profile?.id) return;
+    if (myStoriesCount > 0) {
+      // View your own stories
+      openStoryViewer(profile.id, profile.id);
+    } else {
+      // Go to the story creation screen
+      router.push('/create-story');
+      
+    }
+  };
+
+  // --- Helper Functions ---
   const getOtherUser = (conversation: Conversation) => {
     if (!conversation.match || !profile?.id) return null;
     const isUser1 = conversation.match.user1.id === profile.id;
     return isUser1 ? conversation.match.user2 : conversation.match.user1;
   };
-  
+
   const formatTime = (timestamp?: string) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
-    // ... (Your existing time formatting logic is good)
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.round(diffMs / 60000);
@@ -56,9 +98,11 @@ const ChatScreen: React.FC = () => {
     if (!item.last_message) return 'Start a conversation!';
     const { content, sender_id } = item.last_message;
     const prefix = sender_id === profile?.id ? 'You: ' : '';
-    return `${prefix}${content.length > 30 ? content.substring(0, 30) + '...' : content}`;
+    const truncatedContent = content.length > 30 ? `${content.substring(0, 30)}...` : content;
+    return `${prefix}${truncatedContent}`;
   };
 
+  // --- Render Functions ---
   const renderConversationItem = ({ item }: { item: Conversation }) => {
     const otherUser = getOtherUser(item);
     if (!otherUser) return null;
@@ -82,36 +126,23 @@ const ChatScreen: React.FC = () => {
         }
         activeOpacity={0.7}
       >
-        <Image 
-          source={{ uri: userImage }} 
-          style={styles.avatar} 
-          contentFit="cover" 
-        />
-        
+        <Image source={{ uri: userImage }} style={styles.avatar} contentFit="cover" />
         <View style={styles.messageInfo}>
           <View style={styles.messageHeader}>
-            <Text style={[styles.userName, hasUnread && styles.unreadText]}>
-              {otherUser.name}
-            </Text>
-            <Text style={styles.timestamp}>
-              {formatTime(item.last_message_at)}
-            </Text>
+            <Text style={[styles.userName, hasUnread && styles.unreadText]}>{otherUser.name}</Text>
+            <Text style={styles.timestamp}>{formatTime(item.last_message_at)}</Text>
           </View>
-
           <View style={styles.lastMessageRow}>
             <View style={styles.previewContainer}>
               {isMyLastMessage && (
-                  <Ionicons
-                    name={item.last_message?.is_read ? "checkmark-done" : "checkmark"}
-                    size={16}
-                    color={item.last_message?.is_read ? "#FF1493" : "rgba(255,255,255,0.5)"}
-                    style={styles.readIcon}
-                  />
+                <Ionicons
+                  name={item.last_message?.is_read ? 'checkmark-done' : 'checkmark'}
+                  size={16}
+                  color={item.last_message?.is_read ? '#FF1493' : 'rgba(255,255,255,0.5)'}
+                  style={styles.readIcon}
+                />
               )}
-              <Text 
-                style={[styles.lastMessage, hasUnread && styles.unreadText]} 
-                numberOfLines={1}
-              >
+              <Text style={[styles.lastMessage, hasUnread && styles.unreadText]} numberOfLines={1}>
                 {getLastMessagePreview(item)}
               </Text>
             </View>
@@ -126,7 +157,7 @@ const ChatScreen: React.FC = () => {
     );
   };
 
-  if (loading && conversations.length === 0) {
+  if (chatLoading && conversations.length === 0) {
     return (
       <View style={styles.centeredContainer}>
         <ActivityIndicator size="large" color="#FF1493" />
@@ -140,6 +171,13 @@ const ChatScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Messages</Text>
       </View>
 
+      <StoryRail
+        stories={storyPreviews}
+        myStoriesCount={myStoriesCount}
+        onPressStory={handlePressStory}
+        onPressYourStory={handlePressYourStory}
+      />
+
       <FlatList
         data={conversations}
         renderItem={renderConversationItem}
@@ -150,7 +188,7 @@ const ChatScreen: React.FC = () => {
         onRefresh={handleRefresh}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          !loading ? (
+          !chatLoading ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="chatbubbles-outline" size={80} color="rgba(255,255,255,0.3)" />
               <Text style={styles.emptyTitle}>No Messages Yet</Text>
@@ -166,121 +204,121 @@ const ChatScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000',
-    },
-    header: {
-        paddingTop: 60,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
-    },
-    headerTitle: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#fff',
-    },
-    listContainer: {
-        paddingHorizontal: 20,
-        paddingBottom: 20,
-    },
-    conversationItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-    },
-    avatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        marginRight: 15,
-        backgroundColor: '#222',
-    },
-    messageInfo: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    messageHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 6,
-    },
-    userName: {
-        fontSize: 17,
-        fontWeight: '600',
-        color: '#fff',
-    },
-    timestamp: {
-        fontSize: 13,
-        color: 'rgba(255,255,255,0.5)',
-    },
-    lastMessageRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    previewContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-    },
-    readIcon: {
-        marginRight: 5,
-    },
-    lastMessage: {
-        fontSize: 15,
-        color: 'rgba(255,255,255,0.6)',
-        flexShrink: 1,
-    },
-    unreadText: {
-        fontWeight: 'bold',
-        color: '#fff',
-    },
-    unreadBadge: {
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: '#FF1493',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginLeft: 10,
-    },
-    unreadCount: {
-        color: '#fff',
-        fontWeight: 'bold',
-        fontSize: 12,
-    },
-    separator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        marginLeft: 75,
-    },
-    centeredContainer: {
-        flex: 1,
-        backgroundColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 40,
-        height: 500, // Give it a fixed height to center properly
-    },
-    emptyTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#fff',
-        marginTop: 20,
-        marginBottom: 10,
-    },
-    emptySubtitle: {
-        fontSize: 16,
-        color: 'rgba(255,255,255,0.6)',
-        textAlign: 'center',
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  header: {
+    paddingTop: 60,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  listContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  conversationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginRight: 15,
+    backgroundColor: '#222',
+  },
+  messageInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  messageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  userName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  timestamp: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  lastMessageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  previewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  readIcon: {
+    marginRight: 5,
+  },
+  lastMessage: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.6)',
+    flexShrink: 1,
+  },
+  unreadText: {
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  unreadBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF1493',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  unreadCount: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginLeft: 95,
+  },
+  centeredContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    height: 400,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+  },
 });
 
 export default ChatScreen;

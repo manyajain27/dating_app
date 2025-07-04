@@ -6,14 +6,13 @@ import { Dimensions, LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring
+  withSpring,
 } from 'react-native-reanimated';
 import TabBarButton from './TabBarButton';
-
+import { useAuthStore } from '@/store/authStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Constants for better maintainability
 const SPRING_CONFIG = {
   damping: 80,
   stiffness: 200,
@@ -22,9 +21,8 @@ const SPRING_CONFIG = {
   restSpeedThreshold: 0.01,
 };
 
-const TAB_BAR_MARGIN = 0.1;
-const INDICATOR_MARGIN = 12;
-const INDICATOR_SIZE = 55; // Fixed size for perfect circle
+const TAB_BAR_MARGIN = 0.05;
+const INDICATOR_SIZE = 50;
 
 interface TabBarDimensions {
   height: number;
@@ -33,33 +31,28 @@ interface TabBarDimensions {
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const pathname = usePathname();
-  console.log('Current pathname in TabBar:', pathname);
-
   const { buildHref } = useLinkBuilder();
-  
-  // Filter out nested routes - only show main tab routes
+  const isTabBarVisible = useAuthStore((state) => state.isTabBarVisible);
+
+  // --- ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP LEVEL ---
+
   const mainTabRoutes = state.routes.filter(route => {
-    const routeName = route.name;
-    // Only include routes that don't have nested paths (no slashes) or dynamic segments
-    return !routeName.includes('/') && !routeName.includes('[');
+    return !route.name.includes('/') && !route.name.includes('[');
   });
 
-  // Get the active index relative to main tabs only
   const activeMainTabIndex = mainTabRoutes.findIndex(route => route.key === state.routes[state.index].key);
   const currentMainTabIndex = activeMainTabIndex >= 0 ? activeMainTabIndex : 0;
-  
-  // Initialize with reasonable defaults to prevent division by zero
+
   const [dimensions, setDimensions] = useState<TabBarDimensions>({
     height: 70,
-    width: SCREEN_WIDTH * (1 - TAB_BAR_MARGIN * 2)
+    width: SCREEN_WIDTH * (1 - TAB_BAR_MARGIN * 2),
   });
-  
-  const [isLayoutReady, setIsLayoutReady] = useState(false);
 
-  const buttonWidth = dimensions.width / mainTabRoutes.length;
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
+  // Ensure buttonWidth calculation handles empty mainTabRoutes to prevent division by zero
+  const buttonWidth = mainTabRoutes.length > 0 ? dimensions.width / mainTabRoutes.length : 0;
   const tabPositionX = useSharedValue(0);
 
-  // Initialize tab position when component mounts or active tab changes
   useEffect(() => {
     if (isLayoutReady && buttonWidth > 0) {
       const targetPosition = buttonWidth * currentMainTabIndex;
@@ -69,111 +62,70 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   const onTabbarLayout = useCallback((e: LayoutChangeEvent) => {
     const { height, width } = e.nativeEvent.layout;
-    
-    // Only update if dimensions actually changed to prevent unnecessary re-renders
     setDimensions(prev => {
       if (Math.abs(prev.height - height) > 1 || Math.abs(prev.width - width) > 1) {
         return { height, width };
       }
       return prev;
     });
-    
     if (!isLayoutReady) {
       setIsLayoutReady(true);
     }
-  }, [isLayoutReady]);
+  }, []);
 
   const animatedIndicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tabPositionX.value }],
   }));
 
-  const handleTabPress = useCallback((index: number, route: any) => {
-    return () => {
-      // Animate to new position
-      const targetPosition = buttonWidth * index;
-      tabPositionX.value = withSpring(targetPosition, SPRING_CONFIG);
+  const handleTabPress = useCallback((index: number, route: any) => () => {
+    const targetPosition = buttonWidth * index;
+    tabPositionX.value = withSpring(targetPosition, SPRING_CONFIG);
+    const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+    if (currentMainTabIndex !== index && !event.defaultPrevented) {
+      navigation.navigate(route.name, route.params);
+    }
+  }, [buttonWidth, navigation, currentMainTabIndex]);
 
-      // Handle navigation
-      const event = navigation.emit({
-        type: 'tabPress',
-        target: route.key,
-        canPreventDefault: true,
-      });
+  const handleTabLongPress = useCallback((route: any) => () => {
+    navigation.emit({ type: 'tabLongPress', target: route.key });
+  }, []);
 
-      if (currentMainTabIndex !== index && !event.defaultPrevented) {
-        navigation.navigate(route.name, route.params);
-      }
-    };
-  }, [buttonWidth, navigation, currentMainTabIndex, tabPositionX]);
+  // --- CONDITIONAL RENDERING (AFTER ALL HOOKS) ---
 
-  const handleTabLongPress = useCallback((route: any) => {
-    return () => {
-      navigation.emit({
-        type: 'tabLongPress',
-        target: route.key,
-      });
-    };
-  }, [navigation]);
+  const shouldHideTabBar = !isTabBarVisible ||
+    (pathname.startsWith('/chat/') && pathname !== '/chat') ||
+    pathname.startsWith('/profile') ||
+    (pathname.match(/^\/([^\/]+)$/) && !['/home', '/chat', '/swipe', '/likes'].includes(pathname));
 
-  if (pathname.startsWith('/chat/') && pathname !== '/chat') {
+  if (shouldHideTabBar) {
+    // Return null to completely hide the tab bar when it should not be visible.
+    // All hooks have already been called above this point.
     return null;
   }
 
-  if (pathname.startsWith('/profile')) {
-    return null; 
-  }
-
-  // Hide tab bar for top-level dynamic [id].tsx routes (e.g., /<uuid>)
-  // Exclude main tab routes that might coincidentally match the pattern (e.g., /home, /chat)
-  const isTopLevelDynamicRoute = 
-    pathname.match(/^\/([^\/]+)$/) && // Matches /anything but not /anything/else
-    !['/home', '/chat', '/swipe', '/likes'].includes(pathname); // Exclude known tab names
-
-  if (isTopLevelDynamicRoute) {
-    return null;
-  }
-
-  // Don't render until layout is ready to prevent flashing
   if (!isLayoutReady) {
-    return (
-      <View 
-        onLayout={onTabbarLayout} 
-        style={[
-          styles.tabbar, 
-          { marginHorizontal: SCREEN_WIDTH * TAB_BAR_MARGIN }
-        ]} 
-      />
-    );
+    // Render a placeholder while layout is not ready, but still after hooks.
+    return <View onLayout={onTabbarLayout} style={[styles.tabbar, { marginHorizontal: SCREEN_WIDTH * TAB_BAR_MARGIN }]} />;
   }
 
   return (
-    <View 
-      onLayout={onTabbarLayout} 
-      style={[
-        styles.tabbar, 
-        { marginHorizontal: SCREEN_WIDTH * TAB_BAR_MARGIN }
-      ]}
-    >
-      {/* Animated Indicator Background */}
+    <View onLayout={onTabbarLayout} style={[styles.tabbar, { marginHorizontal: SCREEN_WIDTH * TAB_BAR_MARGIN }]}>
       <Animated.View
         style={[
           animatedIndicatorStyle,
           styles.indicator,
           {
-            height: INDICATOR_SIZE,
             width: INDICATOR_SIZE,
-            left: (buttonWidth - INDICATOR_SIZE) / 2, // Center the circle within each tab
-          }
+            height: INDICATOR_SIZE,
+            left: (buttonWidth - INDICATOR_SIZE) / 2,
+          },
         ]}
         pointerEvents="none"
       />
-
-      {/* Tab Buttons - Only render main tab routes */}
       {mainTabRoutes.map((route, index) => {
         const { options } = descriptors[route.key];
-        const label = String(options.tabBarLabel ?? options.title ?? route.name); // Ensure label is string
+        const label = String(options.tabBarLabel ?? options.title ?? route.name);
         const isFocused = currentMainTabIndex === index;
-
         return (
           <TabBarButton
             key={`${route.name}-${index}`}
@@ -196,20 +148,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    paddingVertical: 15,
+    backgroundColor: '#fff',
+    paddingVertical: 14,
     borderRadius: 35,
+    elevation: 10,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
+    shadowOffset: { width: 0, height: 6 },
     shadowRadius: 10,
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
   },
   indicator: {
     position: 'absolute',
-    backgroundColor: '#f5f5dc',
-    borderRadius: INDICATOR_SIZE / 2, 
+    backgroundColor: '#e64e5e',
+    borderRadius: INDICATOR_SIZE / 2,
   },
 });

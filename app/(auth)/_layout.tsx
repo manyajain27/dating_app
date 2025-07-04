@@ -14,6 +14,7 @@ const AuthLayout = () => {
           <Stack.Screen name='AuthScreen' />
           <Stack.Screen name='SignIn' />
           <Stack.Screen name='SignUp' />
+          <Stack.Screen name='PhoneNumber' />
       </Stack>
     </AuthGuard>
   )

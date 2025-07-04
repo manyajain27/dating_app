@@ -1,4 +1,3 @@
-// store/authStore.ts
 import { Session, User } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
@@ -39,6 +38,8 @@ interface AuthState {
   profile: Profile | null;
   loading: boolean;
   initialized: boolean;
+  isTabBarVisible: boolean; // Added for tab bar visibility
+  setTabBarVisible: (isVisible: boolean) => void; // Added for tab bar visibility
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -53,12 +54,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   loading: false,
   initialized: false,
+  isTabBarVisible: true, // Initial state for tab bar
+
+  // Function to update tab bar visibility
+  setTabBarVisible: (isVisible) => set({ isTabBarVisible: isVisible }),
 
   initialize: async () => {
     try {
       set({ loading: true });
       
-      // Get initial session
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session) {
@@ -66,7 +70,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await get().fetchProfile();
       }
       
-      // Listen for auth changes
       supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.id);
         
@@ -86,20 +89,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signIn: async (email: string, password: string) => {
+  signIn: async (email, password) => {
     try {
       set({ loading: true });
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { error };
-      }
-
-      // Profile will be fetched automatically by the auth state change listener
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return { error };
       return { error: null };
     } catch (error) {
       console.error('Sign in error:', error);
@@ -109,20 +103,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signUp: async (email: string, password: string) => {
+  signUp: async (email, password) => {
     try {
       set({ loading: true });
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { error };
-      }
-
-      // Profile will be created automatically by the database trigger
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return { error };
       return { error: null };
     } catch (error) {
       console.error('Sign up error:', error);
@@ -159,19 +144,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         console.error('Error fetching profile:', error);
         return;
       }
-
       set({ profile });
     } catch (error) {
       console.error('Error fetching profile:', error);
     }
   },
 
-  updateProfile: async (updates: Partial<Profile>) => {
+  updateProfile: async (updates) => {
     try {
       const { user } = get();
-      if (!user) {
-        return { error: { message: 'No user logged in' } };
-      }
+      if (!user) return { error: { message: 'No user logged in' } };
 
       const { data, error } = await supabase
         .from('profiles')
@@ -180,9 +162,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         .select()
         .single();
 
-      if (error) {
-        return { error };
-      }
+      if (error) return { error };
 
       set({ profile: data });
       return { error: null };

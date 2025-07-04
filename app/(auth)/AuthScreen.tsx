@@ -1,230 +1,202 @@
-// screens/AuthScreen.tsx
-import { AntDesign, FontAwesome, MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { AntDesign, FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
-import { Image, Linking, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Image,
+  Linking,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const AuthScreen: React.FC = () => {
-  const handlePhoneSignIn = (): void => {
-    console.log('Phone Sign-In Tapped');
-    // Navigate to phone auth screen when implemented
-  };
-
-  const handleEmailSignIn = (): void => {
-    router.push('/(auth)/SignIn');
-  };
-
-  const handleGoogleSignIn = (): void => {
-    console.log('Google Sign-In Tapped');
-    // Implement Google Sign-In
-  };
-
-  const handleAppleSignIn = (): void => {
-    console.log('Apple Sign-In Tapped');
-    // Implement Apple Sign-In
-  };
-
-  const openLink = (url: string) => {
-    Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
-  };
+const AuthScreen = () => {
+  const openLink = (url: string) => Linking.openURL(url);
 
   return (
-    <LinearGradient
-      colors={['#0f0f23', '#1a1a2e', '#16213e']}
-      style={styles.container}
-    >
-      <StatusBar barStyle="light-content" />
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.headerContainer}>
-          <Text style={styles.logo}>soulmate</Text>
-          <Text style={styles.tagline}>Find your person.</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+
+      {/* Placeholder Logo + Title */}
+      <View style={styles.logoContainer}>
+        <View style={styles.placeholderCircle} />
+        <Text style={styles.title}>Soulmate</Text>
+      </View>
+
+      <Text style={styles.heading}>Sign up to continue</Text>
+
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.emailButton} onPress={() => router.push('/(auth)/SignIn')}>
+          <Text style={styles.emailButtonText}>Continue with email</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.phoneButton} onPress={() => router.push('/(auth)/PhoneNumber')}>
+          <Text style={styles.phoneButtonText}>Use phone number</Text>
+        </TouchableOpacity>
+
+        <View style={styles.dividerContainer}>
+          <View style={styles.divider} />
+          <Text style={styles.orText}>or sign up with</Text>
+          <View style={styles.divider} />
         </View>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.button, styles.phoneButton]}
-            onPress={handlePhoneSignIn}
-            activeOpacity={0.8}
-          >
-            <FontAwesome name="phone" size={20} color="#0f0f23" style={styles.icon} />
-            <Text style={[styles.buttonText, styles.phoneButtonText]}>
-              Continue with Phone Number
-            </Text>
+        <View style={styles.socialIcons}>
+          <TouchableOpacity style={styles.socialIconCircle}>
+            <FontAwesome name="facebook" size={32} color="#1877F2" />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.emailButton]}
-            onPress={handleEmailSignIn}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="email" size={20} color="#0f0f23" style={styles.icon} />
-            <Text style={[styles.buttonText, styles.emailButtonText]}>
-              Continue with Email
-            </Text>
+          <TouchableOpacity style={styles.socialIconCircle}>
+            <Image source={require('../../assets/images/google-logo.png')} style={styles.iconImage} />
           </TouchableOpacity>
-
-          <View style={styles.separatorContainer}>
-            <View style={styles.separatorLine} />
-            <Text style={styles.separatorText}>or</Text>
-            <View style={styles.separatorLine} />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, styles.googleButton]}
-            onPress={handleGoogleSignIn}
-            activeOpacity={0.8}
-          >
-            <Image
-              source={require('../../assets/images/google-logo.png')}
-              style={styles.googleIcon}
-            />
-            <Text style={[styles.buttonText, styles.googleButtonText]}>
-              Continue with Google
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.appleButton]}
-            onPress={handleAppleSignIn}
-            activeOpacity={0.8}
-          >
-            <AntDesign name="apple1" size={22} color="#FFFFFF" style={styles.icon} />
-            <Text style={[styles.buttonText, styles.appleButtonText]}>
-              Continue with Apple
-            </Text>
+          <TouchableOpacity style={styles.socialIconCircle}>
+            <AntDesign name="apple1" size={32} color="#000" />
           </TouchableOpacity>
         </View>
+      </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            By continuing, you agree to our{' '}
-            <Text style={styles.linkText} onPress={() => openLink('https://example.com/terms')}>
-              Terms of Service
-            </Text>
-            {' '}and{' '}
-            <Text style={styles.linkText} onPress={() => openLink('https://example.com/privacy')}>
-              Privacy Policy
-            </Text>.
-          </Text>
-        </View>
-      </SafeAreaView>
-    </LinearGradient>
+      <View style={styles.footer}>
+        <TouchableOpacity onPress={() => openLink('https://example.com/terms')}>
+          <Text style={styles.footerLink}>Terms of use</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openLink('https://example.com/privacy')}>
+          <Text style={styles.footerLink}>Privacy Policy</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 };
+
+const CIRCLE_SIZE = 80;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerContainer: {
-    flex: 1,
+    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 40,
+    paddingHorizontal: 24,
+    paddingTop: 50,
   },
-  logo: {
-    fontSize: 48,
-    fontWeight: '300',
-    color: '#FFFFFF',
-    letterSpacing: -1,
-  },
-  tagline: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 8,
-    fontWeight: '400',
-  },
-  buttonContainer: {
-    width: '85%',
-    maxWidth: 400,
-  },
-  button: {
-    flexDirection: 'row',
+  logoContainer: {
+    marginTop: 0,
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 56,
-    borderRadius: 16,
-    marginBottom: 12,
   },
-  icon: {
-    marginRight: 12,
+  placeholderCircle: {
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_SIZE / 2,
+    backgroundColor: '#f0f0f0',
+    marginBottom: 10,
   },
-  googleIcon: {
-    width: 20,
-    height: 20,
-    marginRight: 12,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  phoneButton: {
-    backgroundColor: '#FFFFFF',
-    marginBottom: 12,
-  },
-  phoneButtonText: {
-    color: '#0f0f23',
-  },
-  emailButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    marginBottom: 24,
-  },
-  emailButtonText: {
-    color: '#0f0f23',
-  },
-  googleButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  googleButtonText: {
-    color: '#FFFFFF',
-  },
-  appleButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  appleButtonText: {
-    color: '#FFFFFF',
-  },
-  separatorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#e64e5e',
     marginBottom: 20,
   },
-  separatorLine: {
+  heading: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#000',
+    marginVertical: 50,
+  },
+  buttonContainer: {
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  emailButton: {
+    backgroundColor: '#e64e5e',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  emailButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  phoneButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e64e5e',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 64,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    
+  },
+  phoneButtonText: {
+    color: '#e64e5e',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20,
+  },
+  divider: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#ddd',
   },
-  separatorText: {
-    marginHorizontal: 16,
-    color: 'rgba(255, 255, 255, 0.6)',
+  orText: {
+    marginHorizontal: 8,
+    color: '#999',
     fontSize: 14,
-    fontWeight: '400',
+  },
+  socialIcons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: 200,
+  },
+  socialIconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  iconImage: {
+    width: 32,
+    height: 32,
+    resizeMode: 'contain',
   },
   footer: {
-    width: '85%',
-    alignItems: 'center',
-    paddingBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingBottom: 30,
+    paddingHorizontal: 20,
+    marginTop: 'auto',
   },
-  footerText: {
+  footerLink: {
+    color: '#e64e5e',
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  linkText: {
     fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.8)',
   },
 });
 

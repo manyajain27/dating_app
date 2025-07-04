@@ -1,3 +1,4 @@
+import StoryViewerModal from '@/components/StoryViewer'
 import { TabBar } from '@/components/tabBar'
 import { AuthGuard } from '@/context/AuthGaurd'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
@@ -78,6 +79,7 @@ const TabsLayout = () => {
           }}
         />
       </Tabs>
+      <StoryViewerModal />
     </AuthGuard>
   )
 }

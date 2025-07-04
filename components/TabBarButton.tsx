@@ -102,8 +102,8 @@ const TabBarButton: React.FC<TabBarButtonProps> = ({
     return null;
   }
 
-  const iconColor = isFocused ? '#000' : '#f5f5dc';
-  const textColor = isFocused ? '#fff' : '#f5f5dc';
+  const iconColor = isFocused ? '#fff' : '#000';
+  const textColor = isFocused ? '#000' : '#000';
 
   return (
     <PlatformPressable

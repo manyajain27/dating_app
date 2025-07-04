@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, StatusBar } from 'react-native';
 
 interface Profile {
   id: string;
@@ -28,7 +28,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ profile: matchedProfile, onCl
   const { profile: userProfile } = useAuthStore();
   const { createConversation } = useChatStore();
 
-  const userName = userProfile?.first_name || userProfile?.name || 'You';
+  const userName = userProfile?.name || userProfile?.name || 'You';
   const userImage = userProfile?.profile_pictures?.[0] || 'https://via.placeholder.com/100';
 
   const handleStartChatting = async () => {
@@ -75,74 +75,64 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ profile: matchedProfile, onCl
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <TouchableOpacity 
         style={styles.closeButton}
         onPress={onClose}
       >
-        <Ionicons name="close" size={24} color="rgba(255,255,255,0.7)" />
+        <Ionicons name="close" size={24} color="#666" />
       </TouchableOpacity>
 
-      <Text style={styles.title}>🎉 It's a Match!</Text>
-      <Text style={styles.subtitle}>You and {matchedProfile.name} have liked each other</Text>
+      <View style={styles.cardsContainer}>
+        {/* User's card */}
+        <View style={[styles.cardWrapper, styles.userCard]}>
+          <View style={styles.card}>
+            <Image
+              source={{ uri: userImage }}
+              style={styles.cardImage}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+            <View style={styles.heartIcon}>
+              <Ionicons name="heart" size={16} color="#FF4458" />
+            </View>
+          </View>
+        </View>
 
-      <View style={styles.avatarsRow}>
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{ uri: userImage }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-          <View style={styles.avatarGlow} />
-        </View>
-        
-        <View style={styles.heartContainer}>
-          <Ionicons name="heart" size={30} color="#FF1493" />
-          <View style={styles.heartGlow} />
-        </View>
-        
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{ uri: matchedProfile.profile_pictures[0] }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-          <View style={styles.avatarGlow} />
+        {/* Matched user's card */}
+        <View style={[styles.cardWrapper, styles.overlappingCard]}>
+          <View style={styles.card}>
+            <Image
+              source={{ uri: matchedProfile.profile_pictures[0] }}
+              style={styles.cardImage}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+            <View style={styles.heartIcon}>
+              <Ionicons name="heart" size={16} color="#FF4458" />
+            </View>
+          </View>
         </View>
       </View>
 
-      <Text style={styles.namesText}>
-        {userName} & {matchedProfile.name}
-      </Text>
+      <Text style={styles.title}>It's a match, {userName}!</Text>
+      <Text style={styles.subtitle}>You and {matchedProfile.name} have liked each other</Text>
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity 
           style={styles.primaryButton}
           onPress={handleStartChatting}
         >
-          <BlurView intensity={25} tint="dark" style={styles.buttonInner}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" />
-            <Text style={styles.primaryButtonText}>Start Chatting</Text>
-          </BlurView>
+          <Text style={styles.primaryButtonText}>Say hello</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
           style={styles.secondaryButton}
           onPress={handleKeepSwiping}
         >
-          <BlurView intensity={15} tint="dark" style={styles.buttonInner}>
-            <Ionicons name="refresh-outline" size={20} color="rgba(255,255,255,0.8)" />
-            <Text style={styles.secondaryButtonText}>Keep Swiping</Text>
-          </BlurView>
+          <Text style={styles.secondaryButtonText}>Keep swiping</Text>
         </TouchableOpacity>
       </View>
-
-      {/* Floating particles animation */}
-      <View style={styles.particle1} />
-      <View style={styles.particle2} />
-      <View style={styles.particle3} />
-      <View style={styles.particle4} />
     </View>
   );
 };
@@ -150,7 +140,7 @@ const MatchScreen: React.FC<MatchScreenProps> = ({ profile: matchedProfile, onCl
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 30,
@@ -163,140 +153,107 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
   },
+  cardsContainer: {
+    position: 'relative',
+    width: 300,
+    height: 300,
+    marginBottom: 40,
+  },
+  cardWrapper: {
+    position: 'absolute',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  userCard: {
+    transform: [{ rotate: '-8deg' }],
+  },
+  overlappingCard: {
+    top: 60,
+    left: 100,
+    transform: [{ rotate: '8deg' }],
+  },
+  card: {
+    width: 180,
+    height: 240,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#FFF',
+    position: 'relative',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heartIcon: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 10,
+    color: '#FF4458',
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.7)',
+    color: '#666',
     textAlign: 'center',
-    marginBottom: 40,
+    marginBottom: 50,
     lineHeight: 22,
-  },
-  avatarsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  avatarWrapper: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  avatarGlow: {
-    // Optional glow effect - commented out for now
-  },
-  heartContainer: {
-    marginHorizontal: 25,
-    position: 'relative',
-  },
-  heartGlow: {
-    position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FF1493',
-    opacity: 0.3,
-    top: -10,
-    left: -10,
-  },
-  namesText: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 40,
-    fontWeight: '500',
   },
   buttonContainer: {
     width: '100%',
-    gap: 15,
+    gap: 12,
   },
   primaryButton: {
+    backgroundColor: '#FF4458',
     borderRadius: 30,
-    overflow: 'hidden',
-    shadowColor: '#FF1493',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
+    paddingVertical: 16,
+    paddingHorizontal: 30,
+    shadowColor: '#FF4458',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
     shadowRadius: 10,
+    elevation: 5,
   },
   secondaryButton: {
+    backgroundColor: 'rgba(255, 68, 88, 0.1)',
     borderRadius: 30,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  buttonInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 16,
     paddingHorizontal: 30,
   },
   primaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
-    marginLeft: 10,
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   secondaryButtonText: {
     fontSize: 16,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.8)',
-    marginLeft: 10,
-  },
-  // Floating particles
-  particle1: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FF1493',
-    top: '20%',
-    left: '10%',
-    opacity: 0.6,
-  },
-  particle2: {
-    position: 'absolute',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#FF69B4',
-    top: '30%',
-    right: '15%',
-    opacity: 0.4,
-  },
-  particle3: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF1493',
-    bottom: '25%',
-    left: '20%',
-    opacity: 0.3,
-  },
-  particle4: {
-    position: 'absolute',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#FF69B4',
-    bottom: '35%',
-    right: '10%',
-    opacity: 0.5,
+    color: '#FF4458',
+    textAlign: 'center',
   },
 });
 
