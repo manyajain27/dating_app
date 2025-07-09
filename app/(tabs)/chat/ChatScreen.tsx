@@ -1,10 +1,11 @@
 import StoryRail from '@/components/StoryRail';
 import { useAuthStore } from '@/store/authStore';
 import { Conversation, useChatStore } from '@/store/chatStore';
-import { useStoryStore, StoryPreview } from '@/store/storyStore';
+import { StoryPreview, useStoryStore } from '@/store/storyStore';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,6 +27,19 @@ const ChatScreen: React.FC = () => {
     openStoryViewer,
     loading: storiesLoading,
   } = useStoryStore();
+
+  // Map storyPreviews to Story type for StoryRail
+  const mappedStories = storyPreviews.map((preview) => ({
+    story_id: preview.story_id,
+    user_id: preview.user_id,
+    user_name: preview.user_name,
+    profile_picture: preview.profile_picture,
+    media_url: '', // No preview media, so empty string
+    media_type: 'image' as 'image', // Explicitly type as 'image'
+    created_at: '', // Not available in preview
+    is_viewed: preview.is_viewed,
+    total_stories: 1, // Assume 1 for preview
+  }));
 
   // Local state
   const [refreshing, setRefreshing] = useState(false);
@@ -138,7 +152,7 @@ const ChatScreen: React.FC = () => {
                 <Ionicons
                   name={item.last_message?.is_read ? 'checkmark-done' : 'checkmark'}
                   size={16}
-                  color={item.last_message?.is_read ? '#FF1493' : 'rgba(255,255,255,0.5)'}
+                  color={item.last_message?.is_read ? '#FF1493' : 'rgba(0,0,0,0.5)'}
                   style={styles.readIcon}
                 />
               )}
@@ -167,12 +181,13 @@ const ChatScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <StatusBar style="dark" />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
       </View>
 
       <StoryRail
-        stories={storyPreviews}
+        stories={mappedStories}
         myStoriesCount={myStoriesCount}
         onPressStory={handlePressStory}
         onPressYourStory={handlePressYourStory}
@@ -190,7 +205,7 @@ const ChatScreen: React.FC = () => {
         ListEmptyComponent={
           !chatLoading ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={80} color="rgba(255,255,255,0.3)" />
+              <Ionicons name="chatbubbles-outline" size={80} color="rgba(0,0,0,0.15)" />
               <Text style={styles.emptyTitle}>No Messages Yet</Text>
               <Text style={styles.emptySubtitle}>
                 When you match with someone, you'll see your conversation here.
@@ -206,7 +221,7 @@ const ChatScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#fff', // Changed to white
   },
   header: {
     paddingTop: 60,
@@ -216,7 +231,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#ff4458', // Accent color for Messages title
   },
   listContainer: {
     paddingHorizontal: 20,
@@ -232,7 +247,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     marginRight: 15,
-    backgroundColor: '#222',
+    backgroundColor: '#eee', // Lighter bg for white
   },
   messageInfo: {
     flex: 1,
@@ -247,11 +262,11 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#fff',
+    color: '#111', // Dark text
   },
   timestamp: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(0,0,0,0.4)',
   },
   lastMessageRow: {
     flexDirection: 'row',
@@ -268,12 +283,12 @@ const styles = StyleSheet.create({
   },
   lastMessage: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(0,0,0,0.6)',
     flexShrink: 1,
   },
   unreadText: {
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#111', // Dark text
   },
   unreadBadge: {
     width: 22,
@@ -291,12 +306,12 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
     marginLeft: 95,
   },
   centeredContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#fff', // White bg
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -310,13 +325,13 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#111', // Dark text
     marginTop: 20,
     marginBottom: 10,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(0,0,0,0.6)',
     textAlign: 'center',
   },
 });

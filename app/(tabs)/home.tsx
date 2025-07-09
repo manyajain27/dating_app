@@ -1,40 +1,42 @@
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import BottomSheet, { BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Video } from 'expo-av';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
   ListRenderItem,
-  RefreshControl,
+  Modal,
   Platform,
+  RefreshControl,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Modal,
-  KeyboardAvoidingView,
-  Keyboard,
   TouchableWithoutFeedback,
-  StyleSheet,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomSheet, { BottomSheetView, BottomSheetTextInput } from '@gorhom/bottom-sheet';
-import { StatusBar } from 'expo-status-bar';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Image } from 'expo-image';
+import Carousel from 'react-native-snap-carousel';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 
-// --- TYPE DEFINITIONS ---
 interface Post {
   id: string;
   user_id: string;
   caption?: string;
-  image_url: string;
+  media_urls: string[];
+  media_type: string;
   location?: string;
   is_archived: boolean;
   likes_count: number;
@@ -67,11 +69,10 @@ interface Match {
 }
 
 // --- OPTIMIZED IMAGE COMPONENT ---
-const OptimizedImage = ({ source, style, placeholder = false }) => {
+const OptimizedImage: React.FC<{ source: { uri?: string } | null; style?: any; placeholder?: boolean }> = ({ source, style, placeholder = false }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Use Expo Image for better compatibility
   if (source?.uri) {
     return (
       <View style={[style, { backgroundColor: '#f5f5f5' }]}>
@@ -86,9 +87,7 @@ const OptimizedImage = ({ source, style, placeholder = false }) => {
           </View>
         )}
         <Image
-          source={{
-            uri: source.uri,
-          }}
+          source={{ uri: source.uri }}
           style={[style, { opacity: loading ? 0 : 1 }]}
           onLoad={() => setLoading(false)}
           onError={() => {
@@ -101,7 +100,6 @@ const OptimizedImage = ({ source, style, placeholder = false }) => {
     );
   }
 
-  // Fallback to default image
   return (
     <Image
       source={require('@/assets/images/default-avatar.png')}
@@ -111,22 +109,33 @@ const OptimizedImage = ({ source, style, placeholder = false }) => {
   );
 };
 
-// --- MAIN COMPONENT ---
 const HomeScreen: React.FC = () => {
-  const { profile: currentUser, user, session } = useAuthStore();
+  const { profile: currentUser, user, session, setTabBarVisible } = useAuthStore();
   const queryClient = useQueryClient();
 
-  // Comments Modal State
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentText, setCommentText] = useState<string>('');
   const [commentsModalVisible, setCommentsModalVisible] = useState<boolean>(false);
-
-  // Create Post Modal State
-  const [postImage, setPostImage] = useState<string | null>(null);
+  const [postMedia, setPostMedia] = useState<{ uri: string; type: 'image' | 'video' }[]>([]);
   const [postCaption, setPostCaption] = useState<string>('');
-
+  const [carouselIndices, setCarouselIndices] = useState<{ [postId: string]: number }>({});
+  const [isAndroid] = useState(Platform.OS === 'android');
   const bottomSheetRef = React.useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['60%', '85%'], []);
+
+
+  // Toggle tab bar visibility on Android when comments modal opens/closes
+  useEffect(() => {
+    if (isAndroid) {
+      setTabBarVisible(!commentsModalVisible);
+    }
+    // Cleanup to restore tab bar visibility when modal closes or component unmounts
+    return () => {
+      if (isAndroid) {
+        setTabBarVisible(true);
+      }
+    };
+  }, [commentsModalVisible, isAndroid, setTabBarVisible]);
 
   const handleCreatePost = useCallback(() => {
     bottomSheetRef.current?.expand();
@@ -134,14 +143,14 @@ const HomeScreen: React.FC = () => {
 
   const handleCloseBottomSheet = useCallback(() => {
     bottomSheetRef.current?.close();
-    setPostImage(null);
+    setPostMedia([]);
     setPostCaption('');
   }, []);
 
-  // --- DATA FETCHING WITH REACT QUERY ---
+  
   const fetchPosts = async (): Promise<Post[]> => {
     if (!user) return [];
-    
+
     const { data: matchedUsers, error: matchError } = await supabase
       .from('matches')
       .select('user1_id, user2_id')
@@ -157,7 +166,7 @@ const HomeScreen: React.FC = () => {
     const { data: postsData, error } = await supabase
       .from('posts')
       .select(`
-        id, user_id, caption, image_url, location, likes_count, comments_count, created_at, is_archived,
+        id, user_id, caption, media_urls, media_type, location, likes_count, comments_count, created_at, is_archived,
         profiles!posts_user_id_fkey (id, name, profile_pictures),
         post_likes!post_likes_post_id_fkey (user_id)
       `)
@@ -181,56 +190,49 @@ const HomeScreen: React.FC = () => {
       .select(`*, profiles!post_comments_user_id_fkey (id, name, profile_pictures)`)
       .eq('post_id', postId)
       .order('created_at', { ascending: false });
-    
+
     if (error) throw error;
     return data || [];
   };
 
-  // React Query hooks
-  const { 
-    data: posts = [], 
-    isLoading, 
-    refetch, 
-    isRefetching 
-  } = useQuery({
+
+
+  // --- DATA FETCHING WITH REACT QUERY ---
+  const {
+    data: posts = [],
+    isLoading,
+    refetch,
+    isRefetching
+  } = useQuery<Post[], Error>({
     queryKey: ['posts', user?.id],
     queryFn: fetchPosts,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    cacheTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000,
     enabled: !!user && !!currentUser,
-    onError: (error) => {
-      console.error('Error fetching posts:', error);
-      Alert.alert('Error', 'Failed to fetch posts. Please try again.');
-    },
   });
 
-  const { 
-    data: comments = [], 
-    isLoading: commentsLoading 
-  } = useQuery({
+  const {
+    data: comments = [],
+    isLoading: commentsLoading
+  } = useQuery<Comment[], Error>({
     queryKey: ['comments', selectedPost?.id],
     queryFn: () => fetchComments(selectedPost!.id),
     enabled: !!selectedPost,
-    staleTime: 2 * 60 * 1000, // 2 minutes for comments
-    onError: (error) => {
-      console.error('Error fetching comments:', error);
-    },
+    staleTime: 2 * 60 * 1000,
   });
 
-  // --- MUTATIONS ---
-  const likeMutation = useMutation({
-    mutationFn: async ({ postId, isLiked }: { postId: string; isLiked: boolean }) => {
+  const likeMutation = useMutation<void, Error, { postId: string; isLiked: boolean }, { previousPosts?: Post[] }>({
+    mutationFn: async ({ postId, isLiked }) => {
       if (isLiked) {
-        await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user!.id });
+        const { error } = await supabase.from('post_likes').delete().match({ post_id: postId, user_id: user!.id });
+        if (error) throw error;
       } else {
-        await supabase.from('post_likes').insert({ post_id: postId, user_id: user!.id });
+        const { error } = await supabase.from('post_likes').insert({ post_id: postId, user_id: user!.id });
+        if (error) throw error;
       }
     },
     onMutate: async ({ postId, isLiked }) => {
-      await queryClient.cancelQueries(['posts', user?.id]);
-      
+      await queryClient.cancelQueries({ queryKey: ['posts', user?.id] });
       const previousPosts = queryClient.getQueryData<Post[]>(['posts', user?.id]);
-      
       queryClient.setQueryData<Post[]>(['posts', user?.id], (old) =>
         old?.map(post =>
           post.id === postId
@@ -242,26 +244,27 @@ const HomeScreen: React.FC = () => {
             : post
         ) || []
       );
-
       return { previousPosts };
     },
-    onError: (error, variables, context) => {
+    onError: (error: Error, variables, context) => {
       console.error('Error liking post:', error);
       if (context?.previousPosts) {
         queryClient.setQueryData(['posts', user?.id], context.previousPosts);
       }
       Alert.alert('Error', 'Could not update like status.');
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts', user?.id] });
+    },
   });
 
-  const commentMutation = useMutation({
-    mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
+  const commentMutation = useMutation<any, Error, { postId: string; content: string }>({
+    mutationFn: async ({ postId, content }) => {
       const { data, error } = await supabase
         .from('post_comments')
         .insert({ post_id: postId, user_id: user!.id, content })
         .select('*, profiles!post_comments_user_id_fkey (id, name, profile_pictures)')
         .single();
-      
       if (error) throw error;
       return data;
     },
@@ -269,60 +272,59 @@ const HomeScreen: React.FC = () => {
       queryClient.setQueryData<Comment[]>(['comments', selectedPost?.id], (old) =>
         [newComment, ...(old || [])]
       );
-      
       queryClient.setQueryData<Post[]>(['posts', user?.id], (old) =>
         old?.map(post =>
-          post.id === selectedPost?.id 
+          post.id === selectedPost?.id
             ? { ...post, comments_count: post.comments_count + 1 }
             : post
         ) || []
       );
-      
       setCommentText('');
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       console.error('Error posting comment:', error);
       Alert.alert('Error', 'Failed to post comment. Please try again.');
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['posts', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['comments', selectedPost?.id] });
+    },
   });
 
-  const createPostMutation = useMutation({
-    mutationFn: async ({ image, caption }: { image: string; caption: string }) => {
-      const formData = new FormData();
-      const fileExt = image.split('.').pop()?.toLowerCase() ?? 'jpg';
-      const fileName = `${user!.id}/${Date.now()}.${fileExt}`;
-      
-      const file = {
-        uri: image,
-        type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-        name: fileName,
-      } as any;
-
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('posts')
-        .upload(fileName, file, {
-          contentType: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`,
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('posts')
-        .getPublicUrl(fileName);
-
-      if (!urlData?.publicUrl) {
-        throw new Error('Could not get public URL.');
+  const createPostMutation = useMutation<any, Error, { media: { uri: string; type: 'image' | 'video' }[]; caption: string }>({
+    mutationFn: async ({ media, caption }) => {
+      const mediaUrls: string[] = [];
+      const mediaType = media.some(item => item.type === 'video') ? 'video' : 'image';
+      for (const item of media) {
+        const fileExt = item.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+        const fileName = `${user!.id}/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const contentType = item.type === 'image' ? `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}` : `video/${fileExt}`;
+        const file = {
+          uri: item.uri,
+          type: contentType,
+          name: fileName,
+        } as any;
+        const { error: uploadError } = await supabase.storage
+          .from('posts')
+          .upload(fileName, file, {
+            contentType,
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage
+          .from('posts')
+          .getPublicUrl(fileName);
+        if (!urlData?.publicUrl) throw new Error('Could not get public URL.');
+        mediaUrls.push(urlData.publicUrl);
       }
-
       const newPostPayload = {
         user_id: user!.id,
-        image_url: urlData.publicUrl,
+        media_urls: mediaUrls,
+        media_type: mediaType,
         caption: caption.trim(),
         likes_count: 0,
         comments_count: 0,
       };
-
       const { data: newPostData, error: insertError } = await supabase
         .from('posts')
         .insert(newPostPayload)
@@ -331,9 +333,7 @@ const HomeScreen: React.FC = () => {
           profiles!posts_user_id_fkey (id, name, profile_pictures)
         `)
         .single();
-      
       if (insertError) throw insertError;
-
       return {
         ...newPostData,
         isLiked: false,
@@ -343,30 +343,26 @@ const HomeScreen: React.FC = () => {
       queryClient.setQueryData<Post[]>(['posts', user?.id], (old) =>
         [newPost, ...(old || [])]
       );
-      
       handleCloseBottomSheet();
       Alert.alert('Success', 'Your post has been shared!');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       console.error('Error creating post:', error);
       Alert.alert('Upload Failed', error.message || 'There was an issue uploading your post.');
     },
   });
 
-  // --- EVENT HANDLERS ---
   const handleLike = (postId: string) => {
-    const post = posts.find(p => p.id === postId);
+    const post = (posts as Post[]).find((p: Post) => p.id === postId);
     if (!post || !user) return;
-    
     likeMutation.mutate({ postId, isLiked: post.isLiked });
   };
 
   const handleComment = () => {
     if (!commentText.trim() || !user || !selectedPost) return;
-    
-    commentMutation.mutate({ 
-      postId: selectedPost.id, 
-      content: commentText.trim() 
+    commentMutation.mutate({
+      postId: selectedPost.id,
+      content: commentText.trim()
     });
   };
 
@@ -382,32 +378,35 @@ const HomeScreen: React.FC = () => {
     Keyboard.dismiss();
   };
 
-  const handlePickImage = async () => {
+  const handlePickMedia = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please grant camera roll permissions to select an image.');
+      Alert.alert('Permission required', 'Please grant media library permissions to select content.');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: false,
       quality: 0.7,
-      allowsMultipleSelection: false,
+      allowsMultipleSelection: true,
+      selectionLimit: 10, // Increase upload limit to 10
     });
 
     if (!result.canceled) {
-      setPostImage(result.assets[0].uri);
+      const selectedMedia = result.assets.map(asset => ({
+        uri: asset.uri,
+        type: asset.type === 'video' ? 'video' : 'image' as 'image' | 'video'
+      }));
+      setPostMedia(selectedMedia);
     }
   };
 
   const handleCreatePostSubmit = () => {
-    if (!postImage || !user || !currentUser) return;
-    
-    createPostMutation.mutate({ 
-      image: postImage, 
-      caption: postCaption 
+    if (!postMedia.length || !user || !currentUser) return;
+    createPostMutation.mutate({
+      media: postMedia,
+      caption: postCaption
     });
   };
 
@@ -415,7 +414,6 @@ const HomeScreen: React.FC = () => {
     refetch();
   };
 
-  // --- TIME FORMATTING ---
   const formatTime = (timestamp: string): string => {
     const now = new Date();
     const postTime = new Date(timestamp);
@@ -430,10 +428,34 @@ const HomeScreen: React.FC = () => {
     return `${Math.floor(diffInDays / 7)}w`;
   };
 
-  // --- RENDER FUNCTIONS ---
+  // Fix renderMediaItem signature for Carousel
+  const renderMediaItem = ({ item }: { item: { uri: string; type: 'image' | 'video' } }, carouselRef: any, activeIndex: number) => {
+  if (item.type === 'video') {
+    return (
+      <View style={styles.mediaContainer}>
+        <Video
+          source={{ uri: item.uri }}
+          style={styles.mediaItem}
+          useNativeControls
+          resizeMode="cover"
+          isLooping
+        />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.mediaContainer}>
+      <OptimizedImage
+        source={{ uri: item.uri }}
+        style={styles.mediaItem}
+      />
+    </View>
+  );
+};
+
   const renderPost: ListRenderItem<Post> = ({ item: post }) => {
     const profilePicture = post.profiles?.profile_pictures?.[0] || null;
-
+  
     return (
       <View style={styles.postContainer}>
         <View style={styles.postHeader}>
@@ -452,16 +474,43 @@ const HomeScreen: React.FC = () => {
             <Ionicons name="ellipsis-horizontal" size={20} color="#666" />
           </TouchableOpacity>
         </View>
-
-        <OptimizedImage 
-          source={{ uri: post.image_url }} 
-          style={styles.postImage}
-        />
-
+  
+        <View style={styles.carouselContainer}>
+          <Carousel
+            data={post.media_urls.map(url => ({ uri: url, type: post.media_type as 'image' | 'video' }))}
+            renderItem={(item, carouselRef) => renderMediaItem(item, carouselRef, carouselIndices[post.id] || 0)}
+            sliderWidth={screenWidth}
+            itemWidth={screenWidth}
+            layout="default"
+            vertical={false}
+            onSnapToItem={(index) => setCarouselIndices(prev => ({ ...prev, [post.id]: index }))}
+          />
+          {post.media_urls.length > 1 && (
+            <>
+              <View style={styles.carouselDotsContainer}>
+                {post.media_urls.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.carouselDot,
+                      index === (carouselIndices[post.id] || 0) ? styles.carouselDotActive : styles.carouselDotInactive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.carouselIndicator}>
+                <Text style={styles.carouselIndicatorText}>
+                  {(carouselIndices[post.id] || 0) + 1}/{post.media_urls.length}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+  
         <View style={styles.postActions}>
           <View style={styles.leftActions}>
-            <TouchableOpacity 
-              onPress={() => handleLike(post.id)} 
+            <TouchableOpacity
+              onPress={() => handleLike(post.id)}
               style={styles.actionButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -471,14 +520,14 @@ const HomeScreen: React.FC = () => {
                 color={post.isLiked ? "#ff3b5c" : "#262626"}
               />
             </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => openComments(post)} 
+            <TouchableOpacity
+              onPress={() => openComments(post)}
               style={styles.actionButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="chatbubble-outline" size={22} color="#262626" />
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -489,7 +538,7 @@ const HomeScreen: React.FC = () => {
             <Ionicons name="bookmark-outline" size={22} color="#262626" />
           </TouchableOpacity>
         </View>
-
+  
         <View style={styles.postInfo}>
           {post.likes_count > 0 && (
             <Text style={styles.likesText}>{post.likes_count.toLocaleString()} likes</Text>
@@ -524,8 +573,8 @@ const HomeScreen: React.FC = () => {
   const renderComment: ListRenderItem<Comment> = ({ item: comment }) => (
     <View style={styles.commentContainer}>
       <OptimizedImage
-        source={comment.profiles?.profile_pictures?.[0] 
-          ? { uri: comment.profiles.profile_pictures[0] } 
+        source={comment.profiles?.profile_pictures?.[0]
+          ? { uri: comment.profiles.profile_pictures[0] }
           : null}
         style={styles.commentProfilePicture}
         placeholder
@@ -553,23 +602,20 @@ const HomeScreen: React.FC = () => {
     );
   }
 
-  // --- JSX RETURN ---
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style='dark' />
-      
-      {/* --- Main Header --- */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Soulmate</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
-            onPress={handleCreatePost} 
+          <TouchableOpacity
+            onPress={handleCreatePost}
             style={styles.headerButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name="add-circle-outline" size={28} color="#262626" />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -578,7 +624,6 @@ const HomeScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* --- Posts Feed --- */}
       {isLoading && !isRefetching ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#ff3b5c" />
@@ -590,9 +635,9 @@ const HomeScreen: React.FC = () => {
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl 
-              refreshing={isRefetching} 
-              onRefresh={onRefresh} 
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={onRefresh}
               tintColor="#ff3b5c"
               colors={['#ff3b5c']}
             />
@@ -610,82 +655,155 @@ const HomeScreen: React.FC = () => {
         />
       )}
 
-      {/* --- Comments Modal --- */}
-      <Modal 
-        visible={commentsModalVisible} 
-        animationType="slide" 
-        onRequestClose={closeComments}
-        presentationStyle="formSheet"
-      >
-        <SafeAreaView style={styles.modalContainer} edges={['top']}>
-          <KeyboardAvoidingView 
-            style={styles.modalContainer}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 25}
-          >
-            <View style={styles.modalHeader}>
-              <TouchableOpacity 
-                onPress={closeComments}
-                style={styles.modalCloseButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="chevron-down" size={28} color="#262626" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Comments</Text>
-              <View style={styles.modalSpacer} />
+{isAndroid ? (
+  // Android: Use a full-screen view with KeyboardAvoidingView
+  commentsModalVisible && (
+    <View style={styles.androidModalOverlay}>
+      <SafeAreaView style={styles.androidModalContainer} edges={['top']}>
+        <KeyboardAvoidingView
+          style={styles.androidModalContainer}
+          behavior="padding"
+          keyboardVerticalOffset={0} // Reduced to minimize extra padding
+          keyboardShouldPersistTaps="handled" // Ensure taps dismiss keyboard
+        >
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              onPress={closeComments}
+              style={styles.modalCloseButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#262626" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Comments</Text>
+            <View style={styles.modalSpacer} />
+          </View>
+
+          {commentsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#ff3b5c" />
             </View>
-            
-            {commentsLoading ? (
-              <View style={styles.loadingContainer}>
+          ) : (
+            <FlatList
+              data={comments}
+              renderItem={renderComment}
+              keyExtractor={(item) => item.id}
+              style={styles.commentsList}
+              contentContainerStyle={styles.commentsListContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            />
+          )}
+
+          <View style={styles.androidCommentInputContainer}>
+            <TextInput
+              style={styles.commentTextInput}
+              placeholder="Add a comment..."
+              placeholderTextColor="#8e8e93"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              returnKeyType="send"
+              onSubmitEditing={handleComment}
+            />
+            <TouchableOpacity
+              onPress={handleComment}
+              disabled={!commentText.trim() || commentMutation.isPending}
+              style={styles.commentSendButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {commentMutation.isPending ? (
                 <ActivityIndicator size="small" color="#ff3b5c" />
-              </View>
+              ) : (
+                <Ionicons
+                  name="send"
+                  size={20}
+                  color={commentText.trim() ? "#ff3b5c" : "#c7c7cc"}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
+  )
+) : (
+  // iOS: Keep the original Modal (unchanged)
+  <Modal
+    visible={commentsModalVisible}
+    animationType="slide"
+    onRequestClose={closeComments}
+    presentationStyle="formSheet"
+  >
+    <SafeAreaView style={styles.modalContainer} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.modalContainer}
+        behavior="padding"
+        keyboardVerticalOffset={0}
+      >
+        <View style={styles.modalHeader}>
+          <TouchableOpacity
+            onPress={closeComments}
+            style={styles.modalCloseButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="chevron-down" size={28} color="#262626" />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Comments</Text>
+          <View style={styles.modalSpacer} />
+        </View>
+
+        {commentsLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#ff3b5c" />
+          </View>
+        ) : (
+          <FlatList
+            data={comments}
+            renderItem={renderComment}
+            keyExtractor={(item) => item.id}
+            style={styles.commentsList}
+            contentContainerStyle={styles.commentsListContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+
+        <View style={styles.commentInputContainer}>
+          <TextInput
+            style={styles.commentTextInput}
+            placeholder="Add a comment..."
+            placeholderTextColor="#8e8e93"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+            returnKeyType="send"
+            onSubmitEditing={handleComment}
+            blurOnSubmit={false}
+          />
+          <TouchableOpacity
+            onPress={handleComment}
+            disabled={!commentText.trim() || commentMutation.isPending}
+            style={styles.commentSendButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {commentMutation.isPending ? (
+              <ActivityIndicator size="small" color="#ff3b5c" />
             ) : (
-              <FlatList
-                data={comments}
-                renderItem={renderComment}
-                keyExtractor={(item) => item.id}
-                style={styles.commentsList}
-                contentContainerStyle={styles.commentsListContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+              <Ionicons
+                name="send"
+                size={20}
+                color={commentText.trim() ? "#ff3b5c" : "#c7c7cc"}
               />
             )}
-            
-            <View style={styles.commentInputContainer}>
-              <TextInput
-                style={styles.commentTextInput}
-                placeholder="Add a comment..."
-                placeholderTextColor="#8e8e93"
-                value={commentText}
-                onChangeText={setCommentText}
-                multiline
-                maxLength={500}
-                returnKeyType="send"
-                onSubmitEditing={handleComment}
-                blurOnSubmit={false}
-              />
-              <TouchableOpacity 
-                onPress={handleComment} 
-                disabled={!commentText.trim() || commentMutation.isLoading}
-                style={styles.commentSendButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                {commentMutation.isLoading ? (
-                  <ActivityIndicator size="small" color="#ff3b5c" />
-                ) : (
-                  <Ionicons 
-                    name="send" 
-                    size={20} 
-                    color={commentText.trim() ? "#ff3b5c" : "#c7c7cc"} 
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  </Modal>
+)}
 
-      {/* --- Create Post Bottom Sheet --- */}
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
@@ -713,41 +831,58 @@ const HomeScreen: React.FC = () => {
                 textAlignVertical="top"
               />
               
-              {postImage && (
+              {postMedia.length > 0 && (
                 <View style={styles.imagePreviewContainer}>
-                  <OptimizedImage 
-                    source={{ uri: postImage }} 
-                    style={styles.imagePreview}
+                  <FlatList
+                    data={postMedia}
+                    renderItem={({ item, index }) => (
+                      <View style={styles.mediaPreviewWrapper}>
+                        {item.type === 'video' ? (
+                          <View style={styles.mediaPreview}>
+                            <Text style={styles.videoPlaceholder}>Video Preview</Text>
+                          </View>
+                        ) : (
+                          <OptimizedImage
+                            source={{ uri: item.uri }}
+                            style={styles.mediaPreview}
+                          />
+                        )}
+                        <TouchableOpacity
+                          style={styles.removeImageButton}
+                          onPress={() => setPostMedia(prev => prev.filter((_, i) => i !== index))}
+                          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                        >
+                          <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.9)" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    keyExtractor={(_, index) => index.toString()}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.mediaPreviewList}
                   />
-                  <TouchableOpacity 
-                    style={styles.removeImageButton} 
-                    onPress={() => setPostImage(null)}
-                    hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                  >
-                    <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.9)" />
-                  </TouchableOpacity>
                 </View>
               )}
               
               <View style={styles.bottomSheetActions}>
-                <TouchableOpacity 
-                  style={styles.imagePickerButton} 
-                  onPress={handlePickImage}
+                <TouchableOpacity
+                  style={styles.imagePickerButton}
+                  onPress={handlePickMedia}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="image-outline" size={22} color="#ff3b5c" />
-                  <Text style={styles.imagePickerText}>Photo</Text>
+                  <Text style={styles.imagePickerText}>Photo/Video</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
                     styles.postSubmitButton,
-                    { opacity: (createPostMutation.isLoading || (!postCaption.trim() && !postImage)) ? 0.5 : 1 }
+                    { opacity: (createPostMutation.isPending || (!postCaption.trim() && !postMedia.length)) ? 0.5 : 1 }
                   ]}
                   onPress={handleCreatePostSubmit}
-                  disabled={createPostMutation.isLoading || (!postCaption.trim() && !postImage)}
+                  disabled={createPostMutation.isPending || (!postCaption.trim() && !postMedia.length)}
                 >
-                  {createPostMutation.isLoading ? (
+                  {createPostMutation.isPending ? (
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
                     <Text style={styles.postSubmitText}>Post</Text>
@@ -1015,7 +1150,7 @@ const styles = StyleSheet.create({
     marginBottom: 72,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#dbdbdb',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#ffffff'
   },
   commentTextInput: { 
     flex: 1, 
@@ -1123,6 +1258,100 @@ const styles = StyleSheet.create({
     fontWeight: '600', 
     color: '#ffffff' 
   },
+  mediaContainer: {
+    width: screenWidth,
+    height: screenWidth,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  mediaItem: {
+    width: screenWidth,
+    height: screenWidth,
+  },
+  videoPlaceholder: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  mediaPreviewWrapper: {
+    position: 'relative',
+    marginRight: 10,
+  },
+  mediaPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  mediaPreviewList: {
+    paddingHorizontal: 10,
+  },
+  carouselContainer: {
+    position: 'relative',
+  },
+  carouselDotsContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 4,
+  },
+  carouselDotActive: {
+    backgroundColor: '#ff3b5c',
+  },
+  carouselDotInactive: {
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  carouselIndicator: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  carouselIndicatorText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // Add these to your styles object
+androidModalOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: '#ffffff',
+  zIndex: 1000,
+},
+androidModalContainer: {
+  flex: 1,
+  backgroundColor: '#ffffff',
+  marginBottom: 10,
+
+},
+androidCommentInputContainer: {
+  flexDirection: 'row',
+  alignItems: 'flex-end',
+  paddingHorizontal: 16,
+  paddingVertical: 12,
+  borderTopWidth: StyleSheet.hairlineWidth,
+  borderTopColor: '#dbdbdb',
+  backgroundColor: '#ffffff',
+},
+
 });
 
 export default HomeScreen;

@@ -1,21 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Image,
-  TouchableOpacity,
-  ActivityIndicator,
-  ScrollView,
-  StatusBar,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
-import { X, Heart, SlidersHorizontal } from 'lucide-react-native';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { Heart, SlidersHorizontal, X } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    Image,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 dayjs.extend(relativeTime);
 
@@ -99,7 +99,7 @@ const MatchesScreen: React.FC = () => {
             <X size={20} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn}>
-            <Heart size={20} color="#fff" fill="#fff" />
+            <Heart size={20} color="#ff4458" fill="#ff4458" />
           </TouchableOpacity>
         </View>
       </View>
@@ -108,7 +108,7 @@ const MatchesScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={styles.header}>
         <Text style={styles.title}>Your Matches</Text>
         <TouchableOpacity style={styles.filterButton}>
@@ -165,16 +165,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: '700',
-    color: '#111',
+    color: '#ff4458', // Accent color for title
   },
   filterButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f8f8f8', // Slightly lighter for soft look
     padding: 10,
     borderRadius: 12,
   },
   subtitle: {
     fontSize: 14,
-    color: '#555',
+    color: 'rgba(0,0,0,0.6)', // Softer dark text
     marginBottom: 12,
   },
   sectionTitle: {
@@ -182,13 +182,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 10,
     marginTop: 20,
-    color: '#333',
+    color: '#111', // Darker for contrast
   },
   emptyText: {
     textAlign: 'center',
     marginTop: 40,
     fontSize: 14,
-    color: '#999',
+    color: 'rgba(0,0,0,0.3)',
   },
   card: {
     width: CARD_WIDTH,
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
     marginBottom: 16,
-    backgroundColor: '#ccc',
+    backgroundColor: '#f3f3f3', // Lighter card bg
   },
   image: {
     width: '100%',
@@ -207,10 +207,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
     padding: 10,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.18)', // Softer overlay
   },
   name: {
-    color: '#fff',
+    color: '#fff', // Restore white for card name
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 8,
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#00000066',
+    backgroundColor: 'rgba(0,0,0,0.4)', // Subtle dark for icon background
     alignItems: 'center',
     justifyContent: 'center',
   },

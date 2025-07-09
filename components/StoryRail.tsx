@@ -70,8 +70,9 @@ const styles = StyleSheet.create({
   container: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: 'rgba(0,0,0,0.08)', // Lighter border for white bg
     paddingHorizontal: 10,
+    backgroundColor: '#fff', // White background
   },
   listContainer: {
     paddingRight: 20,
@@ -86,12 +87,12 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#333',
+    backgroundColor: '#eee', // Light avatar bg
     marginBottom: 6,
   },
   unviewedBorder: {
     borderWidth: 2,
-    borderColor: '#ff4458',
+    borderColor: '#FF1493', // Keep pink for highlight
   },
   avatar: {
     width: 58,
@@ -109,10 +110,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#000',
+    borderColor: '#fff', // White border for plus icon
   },
   userName: {
-    color: 'rgba(255,255,255,0.8)',
+    color: '#111', // Dark text for white bg
     fontSize: 12,
   },
 });

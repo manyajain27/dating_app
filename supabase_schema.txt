@@ -284,13 +284,15 @@ CREATE TRIGGER update_profiles_updated_at
 
 //posts schema
 
-  -- Posts table
+-- Posts table with media support
 CREATE TABLE posts (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
     caption TEXT,
-    image_url TEXT NOT NULL,
-    image_urls TEXT[], -- For multiple images
+    -- Replaced image_url and image_urls with media_urls
+    media_urls TEXT[] NOT NULL,
+    -- Added media_type to distinguish between images and videos
+    media_type TEXT DEFAULT 'image' NOT NULL,
     location TEXT,
     is_archived BOOLEAN DEFAULT FALSE,
     likes_count INTEGER DEFAULT 0,
@@ -327,6 +329,62 @@ CREATE TABLE comment_likes (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(comment_id, user_id)
 );
+
+-- Triggers to update counts
+
+-- Function to update post likes count
+CREATE OR REPLACE FUNCTION update_post_likes_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE posts SET likes_count = likes_count + 1 WHERE id = NEW.post_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE posts SET likes_count = likes_count - 1 WHERE id = OLD.post_id;
+    END IF;
+    RETURN NULL; -- The result is ignored since this is an AFTER trigger
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for post likes
+CREATE TRIGGER post_likes_count_trigger
+    AFTER INSERT OR DELETE ON post_likes
+    FOR EACH ROW EXECUTE FUNCTION update_post_likes_count();
+
+-- Function to update post comments count
+CREATE OR REPLACE FUNCTION update_post_comments_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE posts SET comments_count = comments_count + 1 WHERE id = NEW.post_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE posts SET comments_count = comments_count - 1 WHERE id = OLD.post_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for post comments
+CREATE TRIGGER post_comments_count_trigger
+    AFTER INSERT OR DELETE ON post_comments
+    FOR EACH ROW EXECUTE FUNCTION update_post_comments_count();
+
+-- Function to update comment likes count
+CREATE OR REPLACE FUNCTION update_comment_likes_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE post_comments SET likes_count = likes_count + 1 WHERE id = NEW.comment_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE post_comments SET likes_count = likes_count - 1 WHERE id = OLD.comment_id;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for comment likes
+CREATE TRIGGER comment_likes_count_trigger
+    AFTER INSERT OR DELETE ON comment_likes
+    FOR EACH ROW EXECUTE FUNCTION update_comment_likes_count();
 
 -- Storage bucket for posts
 INSERT INTO storage.buckets (id, name, public) VALUES ('posts', 'posts', true);
