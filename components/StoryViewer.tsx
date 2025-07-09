@@ -42,13 +42,12 @@ const StoryViewerModal = () => {
   const activeStory = activeUserStories?.[activeStoryIndex];
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-//   useEffect(() => {
-//     if (!loading && isViewerVisible && activeUserStories.length === 0) {
-//       closeStoryViewer();
-//       router.replace('/chat');
-//     }
-//   }, [loading, isViewerVisible, activeUserStories]);
-  
+  useEffect(() => {
+    if (!loading && isViewerVisible && activeUserStories.length === 0) {
+      closeStoryViewer();
+      router.replace('/chat');
+    }
+  }, [loading, isViewerVisible, activeUserStories]);
 
   useEffect(() => {
     if (activeStory && profile?.id) {

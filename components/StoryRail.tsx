@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   },
   unviewedBorder: {
     borderWidth: 2,
-    borderColor: '#FF1493',
+    borderColor: '#ff4458',
   },
   avatar: {
     width: 58,

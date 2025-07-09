@@ -70,7 +70,7 @@ const Profile: React.FC = () => {
 
   const handleSignOut = useCallback(async () => {
     await signOut()
-    router.replace('/(auth)/AuthScreen')
+    router.replace('/')
   }, [signOut])
 
   const renderPhotoCarousel = () => {
@@ -410,8 +410,8 @@ const styles = StyleSheet.create({
     borderRadius: 22, // rounded-full (half of width/height for perfect circle)
     alignItems: 'center',
     justifyContent: 'center',
-    borderColor: 'rgba(255,255,255,0.1)', // border border-white/10
-    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)', 
+    backgroundColor: 'rgba(0,0,0,0.4)',
     overflow: 'hidden', // Ensure blur doesn't extend beyond border radius
   },
   floatingButtonsRightGroup: {

@@ -37,7 +37,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // --- ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP LEVEL ---
 
   const mainTabRoutes = state.routes.filter(route => {
-    return !route.name.includes('/') && !route.name.includes('[');
+    return !route.name.includes('/') && !route.name.includes('[') && route.name !== 'create-story';
   });
 
   const activeMainTabIndex = mainTabRoutes.findIndex(route => route.key === state.routes[state.index].key);
@@ -93,6 +93,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   // --- CONDITIONAL RENDERING (AFTER ALL HOOKS) ---
 
   const shouldHideTabBar = !isTabBarVisible ||
+    pathname.startsWith('/create-story') ||
     (pathname.startsWith('/chat/') && pathname !== '/chat') ||
     pathname.startsWith('/profile') ||
     (pathname.match(/^\/([^\/]+)$/) && !['/home', '/chat', '/swipe', '/likes'].includes(pathname));
