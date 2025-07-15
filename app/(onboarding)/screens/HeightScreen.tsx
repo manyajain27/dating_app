@@ -1,16 +1,19 @@
-// File: screens/HeightScreen.tsx
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Dimensions, 
+  Animated,
+  Platform
+} from 'react-native';
+import { Dropdown } from 'react-native-element-dropdown';
 import { ScreenProps } from '../types/FormData';
-import DropDownPicker from 'react-native-dropdown-picker';
-import Animated, { 
-  FadeInUp, 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming,
-  interpolate
-} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 const feetHeights = [
   "4'5\"", "4'6\"", "4'7\"", "4'8\"", "4'9\"", "4'10\"", "4'11\"",
@@ -29,136 +32,278 @@ const cmHeights = (() => {
 })();
 
 const HeightScreen = ({ formData, updateFormData, nextStep }: ScreenProps) => {
-  const [open, setOpen] = useState(false);
   const [value, setValue] = useState(formData.height || null);
   const [unit, setUnit] = useState<'feet' | 'cm'>('feet');
+  const [isFocus, setIsFocus] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
   
-  const currentHeights = unit === 'feet' ? feetHeights : cmHeights;
-  const [items, setItems] = useState(currentHeights.map(h => ({ label: h, value: h })));
-
   // Animation values
-  const slideAnimation = useSharedValue(unit === 'feet' ? 0 : 1);
-  
-  // Calculate the toggle container width (screen width - padding - border)
-  const screenWidth = Dimensions.get('window').width;
-  const toggleContainerWidth = screenWidth - 48 - 8; // 48 for padding, 8 for border/padding
-  const buttonWidth = (toggleContainerWidth - 8) / 2; // 8 for internal padding
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim1 = useRef(new Animated.Value(50)).current;
+  const slideAnim2 = useRef(new Animated.Value(50)).current;
+  const slideAnim3 = useRef(new Animated.Value(50)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
+  const toggleSlideAnim = useRef(new Animated.Value(unit === 'feet' ? 0 : 1)).current;
 
-  const toggleUnit = (newUnit: 'feet' | 'cm') => {
+  const toggleContainerWidth = screenWidth - 48 - 8;
+  const buttonWidth = (toggleContainerWidth - 8) / 2;
+
+  // Prepare dropdown data
+  const currentHeights = unit === 'feet' ? feetHeights : cmHeights;
+  const dropdownData = currentHeights.map(height => ({
+    label: height,
+    value: height,
+  }));
+
+  const isValidSelection = Boolean(value);
+
+  // Entrance animations
+  useEffect(() => {
+    if (!hasAnimated) {
+      setHasAnimated(true);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      Animated.stagger(200, [
+        Animated.spring(slideAnim1, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim2, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim3, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [hasAnimated]);
+
+  const toggleUnit = useCallback((newUnit: 'feet' | 'cm') => {
     if (newUnit !== unit) {
-      // Animate the slide
-      slideAnimation.value = withTiming(newUnit === 'feet' ? 0 : 1, {
+      Animated.timing(toggleSlideAnim, {
+        toValue: newUnit === 'feet' ? 0 : 1,
         duration: 300,
-      });
+        useNativeDriver: true,
+      }).start();
       
       setUnit(newUnit);
-      setValue(null); // Reset selection when switching units
+      setValue(null);
+      updateFormData('height', '');
       
-      const newHeights = newUnit === 'feet' ? feetHeights : cmHeights;
-      setItems(newHeights.map(h => ({ label: h, value: h })));
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
     }
-  };
+  }, [unit, toggleSlideAnim, updateFormData]);
 
-  // Animated style for the toggle indicator
-  const toggleIndicatorStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ 
-        translateX: interpolate(
-          slideAnimation.value,
-          [0, 1],
-          [0, buttonWidth] // Move exactly one button width
-        ) 
-      }],
-    };
-  });
-
-  const handleContinue = () => {
-    if (value) {
-      updateFormData('height', value);
-      nextStep();
+  const handleValueChange = useCallback((item: any) => {
+    setValue(item.value);
+    updateFormData('height', item.value);
+    setIsFocus(false);
+    
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+  }, [updateFormData]);
+
+  const handleFocus = useCallback(() => {
+    setIsFocus(true);
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
+
+  const handleBlur = useCallback(() => {
+    setIsFocus(false);
+  }, []);
+
+  const handleButtonPressIn = useCallback(() => {
+    if (!isValidSelection) return;
+    
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.95,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [isValidSelection, buttonScaleAnim]);
+
+  const handleButtonPressOut = useCallback(() => {
+    if (!isValidSelection) return;
+    
+    Animated.spring(buttonScaleAnim, {
+      toValue: 1,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [isValidSelection, buttonScaleAnim]);
+
+  const handleContinue = useCallback(() => {
+    if (!value) return;
+    
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    nextStep();
+  }, [value, nextStep]);
+
+  const toggleIndicatorStyle = {
+    transform: [
+      {
+        translateX: toggleSlideAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, buttonWidth],
+        }),
+      },
+    ],
   };
 
   return (
     <View style={styles.container}>
-      <Animated.View entering={FadeInUp.delay(100)} style={styles.headerContainer}>
-        <Text style={styles.heading}>how tall are you?</Text>
-        <Text style={styles.subtext}>we don't judge, just curious.</Text>
-      </Animated.View>
-
-      <Animated.View entering={FadeInUp.delay(300)} style={styles.contentContainer}>
-        {/* Unit Toggle with smooth animation */}
-        <View style={styles.unitToggleContainer}>
-          <Animated.View style={[styles.toggleIndicator, toggleIndicatorStyle]} />
-          <TouchableOpacity
-            style={styles.unitButton}
-            onPress={() => toggleUnit('feet')}
-          >
-            <Text style={[styles.unitButtonText, unit === 'feet' && styles.unitButtonTextActive]}>
-              feet
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.unitButton}
-            onPress={() => toggleUnit('cm')}
-          >
-            <Text style={[styles.unitButtonText, unit === 'cm' && styles.unitButtonTextActive]}>
-              cm
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Dropdown Container with proper z-index */}
-        <View style={styles.dropdownWrapper}>
-          <DropDownPicker
-            open={open}
-            value={value}
-            items={items}
-            setOpen={setOpen}
-            setValue={setValue}
-            setItems={setItems}
-            placeholder={`select height in ${unit}`}
-            style={styles.dropdown}
-            dropDownContainerStyle={[
-              styles.dropdownContainer,
-              { zIndex: open ? 9999 : 1 }
-            ]}
-            textStyle={styles.dropdownText}
-            placeholderStyle={styles.placeholderStyle}
-            listMode="SCROLLVIEW"
-            scrollViewProps={{
-              nestedScrollEnabled: true,
-            }}
-            ArrowDownIconComponent={() => (
-              <Ionicons name="chevron-down" size={20} color="#888" />
-            )}
-            ArrowUpIconComponent={() => (
-              <Ionicons name="chevron-up" size={20} color="#888" />
-            )}
-            zIndex={open ? 9999 : 1}
-            zIndexInverse={open ? 1 : 9999}
-          />
-        </View>
-      </Animated.View>
-
-      {/* Button with proper z-index */}
       <Animated.View 
-        entering={FadeInUp.delay(500)} 
-        style={[styles.buttonContainer, { zIndex: open ? 1 : 2 }]}
+        style={[
+          styles.contentContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }]
+          }
+        ]}
       >
-        <TouchableOpacity
-          style={[styles.button, value && styles.buttonActive]}
-          onPress={handleContinue}
-          disabled={open} // Disable when dropdown is open
+        {/* Header */}
+        <Animated.View 
+          style={[
+            styles.headerContainer,
+            { transform: [{ translateY: slideAnim1 }] }
+          ]}
         >
-          <Text style={styles.buttonText}>continue</Text>
-          <Ionicons 
-            name="arrow-forward" 
-            size={20} 
-            color={value ? "#ffffff" : "#666"} 
-            style={styles.buttonIcon}
+          <Text style={styles.heading}>how tall are you?</Text>
+          <Text style={styles.subtext}>we don't judge, just curious.</Text>
+        </Animated.View>
+
+        {/* Unit Toggle */}
+        <Animated.View 
+          style={[
+            styles.toggleSection,
+            { transform: [{ translateY: slideAnim2 }] }
+          ]}
+        >
+          <View style={styles.unitToggleContainer}>
+            <Animated.View style={[styles.toggleIndicator, toggleIndicatorStyle]} />
+            <TouchableOpacity
+              style={styles.unitButton}
+              onPress={() => toggleUnit('feet')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.unitButtonText, unit === 'feet' && styles.unitButtonTextActive]}>
+                feet
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.unitButton}
+              onPress={() => toggleUnit('cm')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.unitButtonText, unit === 'cm' && styles.unitButtonTextActive]}>
+                cm
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* Dropdown */}
+        <Animated.View 
+          style={[
+            styles.dropdownSection,
+            { transform: [{ translateY: slideAnim2 }] }
+          ]}
+        >
+          <Dropdown
+            style={[styles.dropdown, isFocus && styles.dropdownFocused]}
+            placeholderStyle={styles.placeholderStyle}
+            selectedTextStyle={styles.selectedTextStyle}
+            iconStyle={styles.iconStyle}
+            data={dropdownData}
+            maxHeight={300}
+            labelField="label"
+            valueField="value"
+            placeholder={!isFocus ? `select height in ${unit}` : '...'}
+            value={value}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onChange={handleValueChange}
+            renderRightIcon={() => (
+              <Ionicons
+                style={styles.icon}
+                color={isFocus ? '#ffb6c1' : '#a0a0a0'}
+                name={isFocus ? 'chevron-up' : 'chevron-down'}
+                size={20}
+              />
+            )}
+            containerStyle={styles.dropdownContainer}
+            itemTextStyle={styles.itemTextStyle}
+            activeColor="#fff5f7"
           />
-        </TouchableOpacity>
+        </Animated.View>
+
+        {/* Continue Button */}
+        <Animated.View 
+          style={[
+            styles.buttonContainer,
+            { transform: [{ translateY: slideAnim3 }] }
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                isValidSelection && styles.buttonActive,
+                !isValidSelection && styles.buttonInactive
+              ]}
+              onPress={handleContinue}
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+              disabled={!isValidSelection}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.buttonText,
+                isValidSelection && styles.buttonTextActive
+              ]}>
+                continue
+              </Text>
+              <Ionicons 
+                name="arrow-forward" 
+                size={20} 
+                color={isValidSelection ? "#ffffff" : "#a0a0a0"} 
+                style={styles.buttonIcon}
+              />
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
       </Animated.View>
     </View>
   );
@@ -167,10 +312,13 @@ const HeightScreen = ({ formData, updateFormData, nextStep }: ScreenProps) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  contentContainer: {
+    flex: 1,
     paddingHorizontal: 24,
     paddingTop: 100,
     paddingBottom: 40,
-    backgroundColor: '#0a0a0a',
   },
   headerContainer: {
     alignItems: 'flex-start',
@@ -178,38 +326,36 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontSize: 28,
-    color: '#ffffff',
+    color: '#2c2c2c',
     fontWeight: '700',
     marginBottom: 8,
     textTransform: 'lowercase',
   },
   subtext: {
     fontSize: 16,
-    color: '#888888',
+    color: '#666666',
     textTransform: 'lowercase',
   },
-  contentContainer: {
-    flex: 1,
-    zIndex: 1,
+  toggleSection: {
+    marginBottom: 24,
   },
   unitToggleContainer: {
     position: 'relative',
     flexDirection: 'row',
-    backgroundColor: '#1c1c1c',
+    backgroundColor: '#f8f8f8',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: '#e0e0e0',
     height: 48,
   },
   toggleIndicator: {
     position: 'absolute',
     top: 4,
     left: 4,
-    width: (Dimensions.get('window').width - 48 - 8 - 8) / 2, // Calculate button width
+    width: (screenWidth - 48 - 8 - 8) / 2,
     height: 40,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#ffb6c1',
     borderRadius: 8,
     zIndex: 1,
   },
@@ -223,68 +369,103 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   unitButtonText: {
-    color: '#888888',
+    color: '#666666',
     fontSize: 14,
     fontWeight: '500',
     textTransform: 'lowercase',
   },
   unitButtonTextActive: {
-    color: '#000000',
+    color: '#ffffff',
     fontWeight: '600',
   },
-  dropdownWrapper: {
-    zIndex: 1000,
-    elevation: 1000,
+  dropdownSection: {
+    marginBottom: 32,
   },
   dropdown: {
-    backgroundColor: '#1c1c1c',
-    borderColor: '#2a2a2a',
+    height: 56,
+    backgroundColor: '#f8f8f8',
+    borderColor: '#e0e0e0',
+    borderWidth: 1,
     borderRadius: 12,
-    minHeight: 56,
-    zIndex: 1000,
+    paddingHorizontal: 16,
   },
-  dropdownContainer: {
-    backgroundColor: '#1c1c1c',
-    borderColor: '#2a2a2a',
-    maxHeight: 250,
-    borderRadius: 12,
-    marginTop: 4,
-    elevation: 1000,
+  dropdownFocused: {
+    backgroundColor: '#fff5f7',
+    borderColor: '#ffb6c1',
+    borderWidth: 2,
   },
-  dropdownText: {
-    color: '#ffffff',
-    fontSize: 16,
-    textTransform: 'lowercase',
+  icon: {
+    marginRight: 5,
   },
   placeholderStyle: {
-    color: '#888888',
     fontSize: 16,
+    color: '#a0a0a0',
     textTransform: 'lowercase',
+  },
+  selectedTextStyle: {
+    fontSize: 16,
+    color: '#2c2c2c',
+    fontWeight: '500',
+  },
+  iconStyle: {
+    width: 20,
+    height: 20,
+  },
+  inputSearchStyle: {
+    height: 40,
+    fontSize: 16,
+    color: '#2c2c2c',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  dropdownContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  itemTextStyle: {
+    fontSize: 16,
+    color: '#2c2c2c',
+    fontWeight: '500',
   },
   buttonContainer: {
     paddingTop: 20,
   },
   button: {
-    backgroundColor: '#1a1a1a',
     paddingVertical: 18,
     paddingHorizontal: 24,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#444444',
-    opacity: 0.4,
     flexDirection: 'row',
   },
   buttonActive: {
-    opacity: 1,
-    borderColor: '#ffffff',
+    backgroundColor: '#ffb6c1',
+  },
+  buttonInactive: {
+    backgroundColor: '#f0f0f0',
   },
   buttonText: {
-    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+    color: '#a0a0a0',
     textTransform: 'lowercase',
+  },
+  buttonTextActive: {
+    color: '#ffffff',
   },
   buttonIcon: {
     marginLeft: 8,

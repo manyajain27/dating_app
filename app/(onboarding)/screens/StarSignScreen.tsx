@@ -1,96 +1,327 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Animated, { FadeInUp, FadeInDown } from 'react-native-reanimated';
+// File: screens/StarSignScreen.tsx
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Animated,
+  Dimensions,
+  Platform
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { ScreenProps } from '../types/FormData';
 
-const getZodiacSign = (dateString: string): { sign: string; fact: string; article: string } => {
+const { width: screenWidth } = Dimensions.get('window');
+
+interface ZodiacInfo {
+  sign: string;
+  fact: string;
+  article: string;
+}
+
+const getZodiacSign = (dateString: string): ZodiacInfo => {
   const date = new Date(dateString);
   const day = date.getUTCDate();
   const month = date.getUTCMonth() + 1;
 
-  if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) return { sign: 'Aquarius', article: 'an', fact: 'people say aquarians are always ahead of their time — the visionary rebels of the zodiac.' };
-  if ((month === 2 && day >= 19) || (month === 3 && day <= 20)) return { sign: 'Pisces', article: 'a', fact: 'pisceans are said to have a sixth sense for emotions — dreamy and intuitive.' };
-  if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return { sign: 'Aries', article: 'an', fact: 'aries are known as fearless starters — impulsive, bold, and born leaders.' };
-  if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return { sign: 'Taurus', article: 'a', fact: 'taurus is all about stability — but they’ll fight for what they love.' };
-  if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return { sign: 'Gemini', article: 'a', fact: 'geminis are curious and social — sometimes called the chameleons of the zodiac.' };
-  if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return { sign: 'Cancer', article: 'a', fact: 'cancers are emotional deep-divers — nurturing but protective.' };
-  if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return { sign: 'Leo', article: 'a', fact: 'leos are natural performers — said to thrive under the spotlight.' };
-  if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return { sign: 'Virgo', article: 'a', fact: 'virgos are detail-oriented perfectionists — the zodiac’s quiet fixers.' };
-  if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return { sign: 'Libra', article: 'a', fact: 'libras are peacemakers — always chasing balance and beauty.' };
-  if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) return { sign: 'Scorpio', article: 'a', fact: 'scorpios are intense and magnetic — known to carry mystery in their eyes.' };
-  if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) return { sign: 'Sagittarius', article: 'a', fact: 'sagittarians are explorers — blunt, bold, and full of wanderlust.' };
+  if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) {
+    return { sign: 'Aquarius', article: 'an', fact: 'people say aquarians are always ahead of their time — the visionary rebels of the zodiac.' };
+  }
+  if ((month === 2 && day >= 19) || (month === 3 && day <= 20)) {
+    return { sign: 'Pisces', article: 'a', fact: 'pisceans are said to have a sixth sense for emotions — dreamy and intuitive.' };
+  }
+  if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) {
+    return { sign: 'Aries', article: 'an', fact: 'aries are known as fearless starters — impulsive, bold, and born leaders.' };
+  }
+  if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) {
+    return { sign: 'Taurus', article: 'a', fact: 'taurus is all about stability — but they\'ll fight for what they love.' };
+  }
+  if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) {
+    return { sign: 'Gemini', article: 'a', fact: 'geminis are curious and social — sometimes called the chameleons of the zodiac.' };
+  }
+  if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) {
+    return { sign: 'Cancer', article: 'a', fact: 'cancers are emotional deep-divers — nurturing but protective.' };
+  }
+  if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) {
+    return { sign: 'Leo', article: 'a', fact: 'leos are natural performers — said to thrive under the spotlight.' };
+  }
+  if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) {
+    return { sign: 'Virgo', article: 'a', fact: 'virgos are detail-oriented perfectionists — the zodiac\'s quiet fixers.' };
+  }
+  if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) {
+    return { sign: 'Libra', article: 'a', fact: 'libras are peacemakers — always chasing balance and beauty.' };
+  }
+  if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) {
+    return { sign: 'Scorpio', article: 'a', fact: 'scorpios are intense and magnetic — known to carry mystery in their eyes.' };
+  }
+  if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) {
+    return { sign: 'Sagittarius', article: 'a', fact: 'sagittarians are explorers — blunt, bold, and full of wanderlust.' };
+  }
   return { sign: 'Capricorn', article: 'a', fact: 'capricorns are ambitious — born with a to-do list in their soul.' };
 };
 
 const StarSignScreen = ({ formData, updateFormData, nextStep }: ScreenProps) => {
-  const [sign, setSign] = useState('');
-  const [fact, setFact] = useState('');
-  const [article, setArticle] = useState('a');
-  const [formattedDOB, setFormattedDOB] = useState('');
   const [belief, setBelief] = useState<'yes' | 'no' | 'kinda' | ''>('');
+  const [hasAnimated, setHasAnimated] = useState(false);
+  
+  // Animated values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim1 = useRef(new Animated.Value(50)).current;
+  const slideAnim2 = useRef(new Animated.Value(50)).current;
+  const slideAnim3 = useRef(new Animated.Value(50)).current;
+  const slideAnim4 = useRef(new Animated.Value(50)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
+  const optionScaleAnims = useRef(['yes', 'no', 'kinda'].map(() => new Animated.Value(1))).current;
 
-  useEffect(() => {
-    if (formData.dob) {
-      const d = new Date(formData.dob);
-      const zodiac = getZodiacSign(formData.dob);
-      setSign(zodiac.sign);
-      setFact(zodiac.fact);
-      setArticle(zodiac.article);
-      updateFormData('starSign', zodiac.sign);
-      setFormattedDOB(d.toDateString());
-    }
+  // Memoize zodiac calculation
+  const zodiacInfo = useMemo(() => {
+    return formData.dob ? getZodiacSign(formData.dob) : null;
   }, [formData.dob]);
 
-  const handleContinue = () => {
+  // Memoize formatted date
+  const formattedDOB = useMemo(() => {
+    if (!formData.dob) return '';
+    const date = new Date(formData.dob);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }, [formData.dob]);
+
+  // Update form data when zodiac info changes - removed updateFormData from dependency
+  useEffect(() => {
+    if (zodiacInfo) {
+      updateFormData('starSign', zodiacInfo.sign);
+    }
+  }, [zodiacInfo]); // Removed updateFormData from dependencies
+
+  // Entrance animations
+  useEffect(() => {
+    if (!hasAnimated && zodiacInfo) {
+      setHasAnimated(true);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Staggered slide animations
+      Animated.stagger(200, [
+        Animated.spring(slideAnim1, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim2, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim3, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim4, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [zodiacInfo, hasAnimated]);
+
+  // Option button press animations
+  const handleOptionPress = useCallback((option: 'yes' | 'no' | 'kinda', index: number) => {
+    // Animate button press
+    Animated.sequence([
+      Animated.timing(optionScaleAnims[index], {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(optionScaleAnims[index], {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    setBelief(option);
+    
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, [optionScaleAnims]);
+
+  // Continue button animations
+  const handleButtonPressIn = useCallback(() => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.95,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [buttonScaleAnim]);
+
+  const handleButtonPressOut = useCallback(() => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 1,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [buttonScaleAnim]);
+
+  // Handle continue
+  const handleContinue = useCallback(() => {
+    if (!belief) return;
+
     updateFormData('believesInStarSigns', belief);
+    
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
     nextStep();
-  };
+  }, [belief, updateFormData, nextStep]);
+
+  // Return early if no zodiac info
+  if (!zodiacInfo) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>loading your zodiac sign...</Text>
+      </View>
+    );
+  }
+
+  const isValidSelection = belief !== '';
 
   return (
     <View style={styles.container}>
-      <Animated.View entering={FadeInDown.delay(100)}>
-        <Text style={styles.dob}>you were born on</Text>
-        <Text style={styles.dobDate}>{formattedDOB}</Text>
-      </Animated.View>
+      <Animated.View 
+        style={[
+          styles.contentContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }]
+          }
+        ]}
+      >
+        {/* Birth date section */}
+        <Animated.View 
+          style={[
+            styles.dateSection,
+            { transform: [{ translateY: slideAnim1 }] }
+          ]}
+        >
+          <Text style={styles.dateLabel}>you were born on</Text>
+          <Text style={styles.dateText}>{formattedDOB}</Text>
+        </Animated.View>
 
-      <Animated.View entering={FadeInUp.delay(300)}>
-        <Text style={styles.heading}>you're {article} {sign.toLowerCase()}.</Text>
-        <Text style={styles.subtext}>{fact}</Text>
-      </Animated.View>
+        {/* Zodiac sign section */}
+        <Animated.View 
+          style={[
+            styles.zodiacSection,
+            { transform: [{ translateY: slideAnim2 }] }
+          ]}
+        >
+          <Text style={styles.zodiacHeading}>
+            you're {zodiacInfo.article} {zodiacInfo.sign.toLowerCase()}
+          </Text>
+          <Text style={styles.zodiacFact}>{zodiacInfo.fact}</Text>
+        </Animated.View>
 
-      <Animated.View entering={FadeInUp.delay(500)}>
-        <Text style={styles.question}>do you believe in zodiac signs?</Text>
-        <View style={styles.beliefOptions}>
-          {['yes', 'no', 'kinda'].map((option) => (
-            <TouchableOpacity
-              key={option}
-              style={[
-                styles.optionButton,
-                belief === option && styles.optionButtonActive,
-              ]}
-              onPress={() => setBelief(option as 'yes' | 'no' | 'kinda')}
-            >
-              <Text
-                style={[
-                  styles.optionText,
-                  belief === option && styles.optionTextActive,
-                ]}
+        {/* Belief question section */}
+        <Animated.View 
+          style={[
+            styles.beliefSection,
+            { transform: [{ translateY: slideAnim3 }] }
+          ]}
+        >
+          <Text style={styles.beliefQuestion}>do you believe in zodiac signs?</Text>
+          <View style={styles.beliefOptions}>
+            {['yes', 'no', 'kinda'].map((option, index) => (
+              <Animated.View
+                key={option}
+                style={{ transform: [{ scale: optionScaleAnims[index] }] }}
               >
-                {option}
+                <TouchableOpacity
+                  style={[
+                    styles.optionButton,
+                    belief === option && styles.optionButtonActive,
+                  ]}
+                  onPress={() => handleOptionPress(option as 'yes' | 'no' | 'kinda', index)}
+                  accessibilityLabel={`${option} option`}
+                  accessibilityHint={`select ${option} for zodiac belief`}
+                  accessibilityRole="button"
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      belief === option && styles.optionTextActive,
+                    ]}
+                  >
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </View>
+        </Animated.View>
+
+        {/* Continue button */}
+        <Animated.View 
+          style={[
+            styles.buttonContainer,
+            { transform: [{ translateY: slideAnim4 }] }
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                isValidSelection && styles.buttonActive,
+                !isValidSelection && styles.buttonInactive
+              ]}
+              onPress={handleContinue}
+              onPressIn={handleButtonPressIn}
+              onPressOut={handleButtonPressOut}
+              disabled={!isValidSelection}
+              accessibilityLabel="continue"
+              accessibilityHint={isValidSelection ? 'continue to next step' : 'select your zodiac belief to continue'}
+              accessibilityRole="button"
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.buttonText,
+                isValidSelection && styles.buttonTextActive
+              ]}>
+                keep going
               </Text>
             </TouchableOpacity>
-          ))}
-        </View>
-      </Animated.View>
-
-      <Animated.View entering={FadeInUp.delay(700)}>
-        <TouchableOpacity
-          style={[styles.button, !belief && { opacity: 0.4 }]}
-          onPress={handleContinue}
-          disabled={!belief}
-        >
-          <Text style={styles.buttonText}>keep going</Text>
-        </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
       </Animated.View>
     </View>
   );
@@ -99,82 +330,131 @@ const StarSignScreen = ({ formData, updateFormData, nextStep }: ScreenProps) => 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  contentContainer: {
+    flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#0a0a0a',
+    paddingVertical: 40,
   },
-  dob: {
-    fontSize: 16,
-    color: '#888888',
-    textTransform: 'lowercase',
+  loadingText: {
+    fontSize: 18,
+    color: '#666666',
+    textAlign: 'center',
+    fontWeight: '500',
   },
-  dobDate: {
-    fontSize: 24,
-    color: '#ffffff',
-    fontWeight: '600',
+  dateSection: {
     marginBottom: 32,
-    textTransform: 'lowercase',
+    alignItems: 'center',
   },
-  heading: {
-    fontSize: 30,
-    color: '#ffffff',
+  dateLabel: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 8,
+    fontWeight: '400',
+  },
+  dateText: {
+    fontSize: 20,
+    color: '#2c2c2c',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  zodiacSection: {
+    marginBottom: 40,
+    alignItems: 'center',
+  },
+  zodiacHeading: {
+    fontSize: 32,
+    color: '#2c2c2c',
     fontWeight: '700',
-    marginBottom: 10,
-    textTransform: 'lowercase',
+    marginBottom: 16,
+    textAlign: 'center',
+    lineHeight: 38,
   },
-  subtext: {
+  zodiacFact: {
     fontSize: 16,
-    color: '#aaaaaa',
-    marginBottom: 36,
-    textTransform: 'lowercase',
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 24,
+    fontWeight: '400',
   },
-  question: {
-    fontSize: 16,
-    color: '#888888',
-    marginBottom: 12,
-    textTransform: 'lowercase',
+  beliefSection: {
+    marginBottom: 32,
+  },
+  beliefQuestion: {
+    fontSize: 18,
+    color: '#2c2c2c',
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   beliefOptions: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 12,
     flexWrap: 'wrap',
-    marginBottom: 32,
   },
   optionButton: {
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: '#1c1c1c',
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    backgroundColor: '#f8f8f8',
     borderWidth: 1,
-    borderColor: '#444444',
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   optionButtonActive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
+    backgroundColor: '#ffb6c1',
+    borderColor: '#ffb6c1',
+    shadowOpacity: 0.1,
   },
   optionText: {
-    color: '#888888',
-    fontSize: 14,
+    color: '#666666',
+    fontSize: 16,
     fontWeight: '500',
-    textTransform: 'lowercase',
+    textAlign: 'center',
   },
   optionTextActive: {
-    color: '#000000',
+    color: '#ffffff',
     fontWeight: '600',
   },
+  buttonContainer: {
+    marginTop: 20,
+  },
   button: {
-    backgroundColor: '#1a1a1a',
     paddingVertical: 18,
     borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#444444',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  buttonActive: {
+    backgroundColor: '#ffb6c1',
+  },
+  buttonInactive: {
+    backgroundColor: '#f0f0f0',
   },
   buttonText: {
-    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
-    textTransform: 'lowercase',
+    color: '#a0a0a0',
+  },
+  buttonTextActive: {
+    color: '#ffffff',
   },
 });
 

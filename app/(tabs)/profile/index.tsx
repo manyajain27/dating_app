@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   photoCarouselContainer: {
-    height: height * 0.5,
+    height: height * 0.7,
   },
   photoSlide: {
     width: width,
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   },
   profileImage: {
     width: width,
-    height: height * 0.5,
+    height: height * 0.7,
     backgroundColor: '#f6f6f8',
   },
   imageGradient: {
@@ -496,11 +496,11 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   photoIndicatorActive: {
-    backgroundColor: '#f8b2ca',
+    backgroundColor: 'black',
     width: 32,
   },
   photoIndicatorInactive: {
-    backgroundColor: 'rgba(248,178,202,0.4)',
+    backgroundColor: 'gray',
     width: 16,
   },
   floatingButtonsContainer: {

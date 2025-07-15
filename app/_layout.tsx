@@ -5,6 +5,12 @@ import { AuthProvider } from "@/context/AuthProvider";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 export default function RootLayout() {
+
+  if (typeof global.structuredClone !== 'function') {
+    global.structuredClone = (value) => JSON.parse(JSON.stringify(value));
+  }
+  
+
   return (
     <AuthProvider>
       <GestureHandlerRootView>

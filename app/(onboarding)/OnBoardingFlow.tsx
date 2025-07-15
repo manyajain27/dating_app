@@ -236,7 +236,7 @@ const saveProfileToDatabase = async (): Promise<boolean> => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       
       {currentStep < steps.length - 1 && (
         <ProgressBar
@@ -271,7 +271,7 @@ const saveProfileToDatabase = async (): Promise<boolean> => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: 'white',
   },
   screenContainer: {
     flex: 1,

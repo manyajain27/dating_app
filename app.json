@@ -16,7 +16,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.meeraitech.dating_App"
     },
     "web": {
       "bundler": "metro",
@@ -34,10 +35,16 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-web-browser",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "32b19ee0-cd20-44ce-a896-c037b852c63e"
+      }
     }
   }
 }

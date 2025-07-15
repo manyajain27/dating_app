@@ -48,13 +48,13 @@ const styles = StyleSheet.create({
   },
   track: {
     height: 3,
-    backgroundColor: '#333333',
+    backgroundColor: 'lightgray',
     borderRadius: 2,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000',
     borderRadius: 2,
   },
 });

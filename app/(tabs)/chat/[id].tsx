@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,8 @@ import {
   TouchableOpacity,
   View,
   StatusBar,
-  Pressable
+  Pressable,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
@@ -28,71 +29,153 @@ import * as FileSystem from 'expo-file-system';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const IndividualChatScreen: React.FC = () => {
-  const { id, userName, userImage } = useLocalSearchParams<{ id: string; userName: string; userImage: string; }>();
+  const { id, userName, userImage, teaser } = useLocalSearchParams<{
+    id: string;
+    userName: string;
+    userImage: string;
+    teaser?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [replyingToTeaser, setReplyingToTeaser] = useState<string | null>(null);
 
-  const { messages, fetchMessages, sendMessage, sendImageMessage, setActiveConversation } = useChatStore();
+  const {
+    messages,
+    fetchMessages,
+    sendMessage,
+    sendImageMessage,
+    setActiveConversation,
+    retryFailedMessage,
+    pendingMessages,
+    failedMessages
+  } = useChatStore();
   const { profile } = useAuthStore();
 
   const conversationMessages = messages[id] || [];
 
+  // Combine real messages with pending messages
+  const allMessages = React.useMemo(() => {
+    const pending = Object.values(pendingMessages).filter(m => m.conversation_id === id);
+    return [...conversationMessages, ...pending].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+  }, [conversationMessages, pendingMessages, id]);
+
   useEffect(() => {
     if (id) {
-        fetchMessages(id);
-        setActiveConversation(id);
+      fetchMessages(id);
+      setActiveConversation(id);
     }
-    // Cleanup on unmount
+
     return () => {
-        setActiveConversation(null);
+      setActiveConversation(null);
     };
   }, [id]);
 
+  // Handle teaser reply from params
   useEffect(() => {
-    if (conversationMessages.length > 0) {
-      scrollToEnd(false); // Initial scroll should not be animated
+    if (teaser) {
+      setReplyingToTeaser(teaser);
+      // Don't pre-fill the input, let user type their own message
+      // Focus input after a short delay
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 500);
     }
-  }, [conversationMessages.length]);
+  }, [teaser]);
+
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        setTimeout(() => scrollToEnd(), 100);
+      }
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (allMessages.length > 0) {
+      scrollToEnd(false);
+    }
+  }, [allMessages.length]);
+
+  const scrollToEnd = useCallback((animated: boolean = true) => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated });
+    }, 100);
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading) return;
 
     const messageContent = inputText.trim();
+    const teaserToReply = replyingToTeaser; // Capture the teaser before clearing
     setInputText('');
+    setReplyingToTeaser(null); // Clear teaser reply state
     setIsLoading(true);
 
     try {
-      await sendMessage(id, messageContent);
+      // If replying to a teaser, send it as a teaser reply
+      if (teaserToReply) {
+        console.log('Sending teaser reply:', { content: messageContent, teaser: teaserToReply });
+        await sendMessage(id, messageContent, { teaser: teaserToReply });
+      } else {
+        await sendMessage(id, messageContent);
+      }
+      scrollToEnd();
     } catch (error) {
       console.error('Error sending message:', error);
-      setInputText(messageContent); // Restore the message on failure
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+      // Restore the message and teaser state on error
+      setInputText(messageContent);
+      if (teaserToReply) {
+        setReplyingToTeaser(teaserToReply);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleRetryMessage = async (messageId: string) => {
+    try {
+      await retryFailedMessage(messageId);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to retry message. Please try again.');
+    }
+  };
+
   const handleImagePicker = async () => {
     try {
-      // Request permissions
-      const { status: cameraStatus } = await ImagePicker.getCameraPermissionsAsync();
-      if (cameraStatus !== 'granted') {
-        const { status: requestStatus } = await ImagePicker.requestCameraPermissionsAsync();
-        if (requestStatus !== 'granted') {
-          Alert.alert('Camera access required', 'Please allow camera access to take photos.');
-          return;
-        }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow access to your photos.');
+        return;
       }
 
-      // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8, // Reduce quality to save bandwidth
+        quality: 0.8,
         base64: false,
       });
 
@@ -100,6 +183,7 @@ const IndividualChatScreen: React.FC = () => {
         setIsUploadingImage(true);
         try {
           await sendImageMessage(id, result.assets[0].uri);
+          scrollToEnd();
         } catch (error) {
           console.error('Error sending image:', error);
           Alert.alert('Error', 'Failed to send image. Please try again.');
@@ -116,14 +200,12 @@ const IndividualChatScreen: React.FC = () => {
 
   const handleCameraPicker = async () => {
     try {
-      // Request permissions
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'We need access to your camera to take photos.');
         return;
       }
 
-      // Launch camera
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
@@ -135,6 +217,7 @@ const IndividualChatScreen: React.FC = () => {
         setIsUploadingImage(true);
         try {
           await sendImageMessage(id, result.assets[0].uri);
+          scrollToEnd();
         } catch (error) {
           console.error('Error sending image:', error);
           Alert.alert('Error', 'Failed to send image. Please try again.');
@@ -155,37 +238,35 @@ const IndividualChatScreen: React.FC = () => {
 
   const handleSaveImage = async () => {
     if (!fullScreenImage) return;
-  
+
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please allow access to save images.');
         return;
       }
-  
+
       const fileName = `chat_image_${Date.now()}.jpg`;
       const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-  
-      // Download image to local file
+
       const downloadRes = await FileSystem.downloadAsync(fullScreenImage, fileUri);
-  
-      // Save to media library
+
       const asset = await MediaLibrary.createAssetAsync(downloadRes.uri);
-  
+
       const album = await MediaLibrary.getAlbumAsync('Chat Images');
       if (album) {
         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
       } else {
         await MediaLibrary.createAlbumAsync('Chat Images', asset, false);
       }
-  
+
       Alert.alert('Success', 'Image saved to your gallery!');
     } catch (error) {
       console.error('Error saving image:', error);
       Alert.alert('Error', 'Failed to save image. Please try again.');
     }
   };
-  
+
   const showImageOptions = () => {
     Alert.alert(
       'Send Image',
@@ -200,12 +281,6 @@ const IndividualChatScreen: React.FC = () => {
 
   const formatMessageTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const scrollToEnd = (animated: boolean = true) => {
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated });
-    }, 100);
   };
 
   const renderImageMessage = (message: Message) => {
@@ -241,10 +316,13 @@ const IndividualChatScreen: React.FC = () => {
 
   const renderMessageItem = ({ item, index }: { item: Message; index: number }) => {
     const isMyMessage = item.sender_id === profile?.id;
+    const isPending = item.id.startsWith('temp_');
+    const isFailed = failedMessages.has(item.id);
+    const isTeaserReply = item.message_type === 'teaser_reply';
 
     // Grouping logic
-    const prevMessage = index > 0 ? conversationMessages[index - 1] : null;
-    const nextMessage = index < conversationMessages.length - 1 ? conversationMessages[index + 1] : null;
+    const prevMessage = index > 0 ? allMessages[index - 1] : null;
+    const nextMessage = index < allMessages.length - 1 ? allMessages[index + 1] : null;
 
     const isSameSenderAsPrev = prevMessage && prevMessage.sender_id === item.sender_id;
     const isSameSenderAsNext = nextMessage && nextMessage.sender_id === item.sender_id;
@@ -278,7 +356,19 @@ const IndividualChatScreen: React.FC = () => {
           !isFirstInGroup && !isLastInGroup && styles.middleMessage,
           !isFirstInGroup && isLastInGroup && (isMyMessage ? styles.myLastMessage : styles.otherLastMessage),
           item.message_type === 'image' && styles.imageMessageBubble,
+          isTeaserReply && styles.teaserReplyBubble,
+          isPending && styles.pendingMessage,
+          isFailed && styles.failedMessage,
         ]}>
+          {isTeaserReply && item.metadata?.teaser && (
+            <View style={styles.teaserReference}>
+              <Ionicons name="chatbubble-outline" size={14} color="#FF1493" />
+              <Text style={styles.teaserReferenceText}>
+                Replying to: "{item.metadata.teaser}"
+              </Text>
+            </View>
+          )}
+
           {item.message_type === 'image' ? (
             renderImageMessage(item)
           ) : (
@@ -297,13 +387,31 @@ const IndividualChatScreen: React.FC = () => {
               ]}>
                 {formatMessageTime(item.created_at)}
               </Text>
-              {isMyMessage && (
+              {isMyMessage && !isPending && !isFailed && (
                 <Ionicons
                   name={item.is_read ? "checkmark-done" : "checkmark"}
                   size={14}
-                  color={item.is_read ? "#0084FF" : "#B0B0B0"}
+                  color={item.is_read ? "#FF1493" : "#C7C7CC"}
                   style={styles.readIndicator}
                 />
+              )}
+              {isPending && (
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color="#C7C7CC"
+                  style={styles.readIndicator}
+                />
+              )}
+              {isFailed && (
+                <TouchableOpacity onPress={() => handleRetryMessage(item.id)}>
+                  <Ionicons
+                    name="alert-circle"
+                    size={16}
+                    color="#FF3B30"
+                    style={styles.readIndicator}
+                  />
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -311,6 +419,11 @@ const IndividualChatScreen: React.FC = () => {
       </View>
     );
   };
+
+  const keyExtractor = useCallback((item: Message, index: number) => {
+    // Use a combination of id and index to ensure uniqueness
+    return `${item.id}_${index}`;
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -321,7 +434,7 @@ const IndividualChatScreen: React.FC = () => {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={28} color="#FF1493" />
         </TouchableOpacity>
 
         <View style={styles.headerContent}>
@@ -339,25 +452,29 @@ const IndividualChatScreen: React.FC = () => {
         </View>
 
         <TouchableOpacity style={styles.headerButton} activeOpacity={0.7}>
-          <Ionicons name="videocam" size={24} color="#FFFFFF" />
+          <Ionicons name="videocam" size={24} color="#FF1493" />
         </TouchableOpacity>
       </View>
 
-      {/* Use KeyboardAvoidingView to wrap the list and input */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={flatListRef}
-          data={conversationMessages}
+          data={allMessages}
           renderItem={renderMessageItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           style={styles.messagesList}
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollToEnd(false)}
-          keyboardDismissMode="on-drag"
+          keyboardDismissMode="interactive"
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 100,
+          }}
           ListEmptyComponent={
             <View style={styles.emptyChatContainer}>
               <View style={styles.emptyAvatarContainer}>
@@ -372,16 +489,34 @@ const IndividualChatScreen: React.FC = () => {
           }
         />
 
-        {/* Image upload loading indicator */}
         {isUploadingImage && (
           <View style={styles.uploadingIndicator}>
-            <ActivityIndicator size="small" color="#4CAF50" />
+            <ActivityIndicator size="small" color="#34C759" />
             <Text style={styles.uploadingText}>Uploading image...</Text>
           </View>
         )}
 
-        {/* Input Container */}
         <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {replyingToTeaser && (
+            <View style={styles.teaserReplyContainer}>
+              <View style={styles.teaserReplyContent}>
+                <Ionicons name="chatbubble-outline" size={16} color="#FF1493" />
+                <Text style={styles.teaserReplyText}>
+                  Replying to: "{replyingToTeaser}"
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setReplyingToTeaser(null);
+                  setInputText('');
+                }}
+                style={styles.teaserReplyClose}
+              >
+                <Ionicons name="close" size={16} color="#8E8E93" />
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={styles.inputWrapper}>
             {!inputText.trim() && (
               <>
@@ -390,7 +525,7 @@ const IndividualChatScreen: React.FC = () => {
                   onPress={handleCameraPicker}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="camera" size={24} color="#B0B0B0" />
+                  <Ionicons name="camera" size={24} color="#8E8E93" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -398,22 +533,26 @@ const IndividualChatScreen: React.FC = () => {
                   onPress={handleImagePicker}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="image" size={24} color="#B0B0B0" />
+                  <Ionicons name="image" size={24} color="#8E8E93" />
                 </TouchableOpacity>
               </>
             )}
-            
+
             <TextInput
+              ref={inputRef}
               style={styles.textInput}
               value={inputText}
               onFocus={() => scrollToEnd()}
               onChangeText={setInputText}
-              placeholder={`Message ${userName}...`}
-              placeholderTextColor="#9CA3AF"
+              placeholder={replyingToTeaser ? "Your reply..." : `Message ${userName}...`}
+              placeholderTextColor="#8E8E93"
               multiline
               maxLength={1000}
+              returnKeyType="send"
+              onSubmitEditing={handleSendMessage}
+              blurOnSubmit={false}
             />
-            
+
             <TouchableOpacity
               style={[
                 styles.sendButton,
@@ -461,8 +600,7 @@ const IndividualChatScreen: React.FC = () => {
               )}
             </View>
           </Pressable>
-          
-          {/* Full Screen Controls */}
+
           <View style={styles.fullScreenControls}>
             <TouchableOpacity
               style={styles.fullScreenButton}
@@ -470,7 +608,7 @@ const IndividualChatScreen: React.FC = () => {
             >
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={styles.fullScreenButton}
               onPress={handleSaveImage}
@@ -489,21 +627,21 @@ export default IndividualChatScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#FFFFFF',
   },
-  
+
   // Header Styles
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#2A2A2A',
+    borderBottomColor: '#E5E5EA',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 2,
   },
@@ -513,7 +651,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#F2F2F7',
   },
   headerContent: {
     flex: 1,
@@ -528,7 +666,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#3A3A3A',
+    backgroundColor: '#F2F2F7',
   },
   onlineIndicator: {
     position: 'absolute',
@@ -539,7 +677,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#34C759',
     borderWidth: 2,
-    borderColor: '#0A0A0A',
+    borderColor: '#FFFFFF',
   },
   headerTextContainer: {
     marginLeft: 12,
@@ -548,18 +686,18 @@ const styles = StyleSheet.create({
   headerName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000000',
     marginBottom: 1,
   },
   headerStatus: {
     fontSize: 13,
-    color: '#B0B0B0',
+    color: '#8E8E93',
     fontWeight: '400',
   },
 
   // Main Content
   messagesList: {
-    backgroundColor: '#000000',
+    backgroundColor: '#F2F2F7',
   },
   messagesContent: {
     paddingHorizontal: 16,
@@ -595,7 +733,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#3A3A3A',
+    backgroundColor: '#F2F2F7',
   },
   messageBubble: {
     maxWidth: '75%',
@@ -603,36 +741,91 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 1,
   },
   myMessageBubble: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#FF1493',
     marginLeft: 40,
   },
   otherMessageBubble: {
-    backgroundColor: '#2A2A2A',
-    borderWidth: 0.5,
-    borderColor: '#3A3A3A',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
   },
   imageMessageBubble: {
     padding: 2,
     backgroundColor: 'transparent',
     borderWidth: 0,
   },
+  pendingMessage: {
+    opacity: 0.7,
+  },
+  failedMessage: {
+    backgroundColor: '#FF3B30',
+  },
+  teaserReplyBubble: {
+    borderWidth: 1,
+    borderColor: '#FF1493',
+  },
+
+  // Teaser Reply Styles
+  teaserReference: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+    maxWidth: '100%',
+  },
+  teaserReferenceText: {
+    fontSize: 12,
+    color: '#FF1493',
+    fontStyle: 'italic',
+    marginLeft: 6,
+    flexShrink: 1,
+  },
+  teaserReplyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    borderRadius: 12,
+    marginBottom: 8,
+    padding: 12,
+    paddingEnd: 8,
+    maxWidth: '100%',
+  },
+  teaserReplyContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  teaserReplyText: {
+    fontSize: 13,
+    color: '#FF1493',
+    fontStyle: 'italic',
+    marginLeft: 8,
+    flexShrink: 1,
+  },
+  teaserReplyClose: {
+    padding: 4,
+    marginLeft: 8,
+  },
 
   // Enhanced Image Message Styles
   imageMessageContainer: {
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
   },
   messageImage: {
     width: '100%',
     aspectRatio: 1,
     borderRadius: 10,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#F2F2F7',
   },
   imageTextContainer: {
     padding: 12,
@@ -681,7 +874,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   otherMessageText: {
-    color: '#FFFFFF',
+    color: '#000000',
   },
   messageFooter: {
     flexDirection: 'row',
@@ -697,7 +890,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.8)',
   },
   otherMessageTime: {
-    color: '#9E9E9E',
+    color: '#8E8E93',
   },
   readIndicator: {
     marginLeft: 4,
@@ -709,31 +902,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#2A2A2A',
+    borderTopColor: '#E5E5EA',
   },
   uploadingText: {
     marginLeft: 8,
     fontSize: 14,
-    color: '#B0B0B0',
+    color: '#8E8E93',
   },
 
   // Enhanced Input Styles
   inputContainer: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#2A2A2A',
+    borderTopColor: '#E5E5EA',
     paddingHorizontal: 16,
     paddingTop: 12,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: '#2A2A2A',
+    backgroundColor: '#F2F2F7',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#3A3A3A',
+    borderColor: '#E5E5EA',
     paddingHorizontal: 6,
     paddingVertical: 6,
     minHeight: 44,
@@ -749,7 +942,7 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: '#000000',
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     maxHeight: 120,
@@ -764,10 +957,10 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   sendButtonActive: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#FF1493',
   },
   sendButtonInactive: {
-    backgroundColor: '#5A5A5A',
+    backgroundColor: '#C7C7CC',
   },
   sendIcon: {
     marginLeft: 1,
@@ -826,18 +1019,18 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#3A3A3A',
+    backgroundColor: '#F2F2F7',
   },
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#000000',
     textAlign: 'center',
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#B0B0B0',
+    color: '#8E8E93',
     textAlign: 'center',
   },
 });

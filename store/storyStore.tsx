@@ -135,58 +135,71 @@ export const useStoryStore = create<StoryState>((set, get) => ({
   // The complete creation flow
   createStory: async (userId: string) => {
     if (!userId) {
-      console.error("Create story attempt failed: No user ID provided.");
       alert("You must be logged in to create a story.");
-      set({ uploading: false });
       return;
     }
+  
     set({ uploading: true });
+  
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsMultipleSelection: true, // ✅ allow multiple
         allowsEditing: true,
         aspect: [9, 16],
         quality: 0.8,
+        selectionLimit: 5, // you can limit how many
       });
-
-      if (result.canceled || !result.assets?.[0]) {
+  
+      if (result.canceled || !result.assets?.length) {
         set({ uploading: false });
         return;
       }
-
-      const asset = result.assets[0];
-      const fileUri = asset.uri;
-      const fileType = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
-      const fileExt = asset.type === 'video' ? 'mp4' : 'jpg';
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${userId}/${fileName}`;
-
-      const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
-      const { error: uploadError } = await supabase.storage
-        .from('stories')
-        .upload(filePath, decode(base64), { contentType: fileType });
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('stories').getPublicUrl(filePath);
-      if (!urlData.publicUrl) throw new Error("Could not get public URL");
-
-      const { error: insertError } = await supabase.from('stories').insert({
-        user_id: userId,
-        media_url: urlData.publicUrl,
-        media_type: asset.type,
-      });
-      if (insertError) throw insertError;
-      
+  
+      for (const asset of result.assets) {
+        const fileUri = asset.uri;
+        const fileType = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
+        const fileExt = asset.type === 'video' ? 'mp4' : 'jpg';
+        const fileName = `${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExt}`;
+        const filePath = `${userId}/${fileName}`;
+  
+        const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
+  
+        const { error: uploadError } = await supabase.storage
+          .from('stories')
+          .upload(filePath, decode(base64), {
+            contentType: fileType,
+          });
+  
+        if (uploadError) throw uploadError;
+  
+        const { data: urlData } = supabase.storage
+          .from('stories')
+          .getPublicUrl(filePath);
+  
+        if (!urlData?.publicUrl) throw new Error('Could not get public URL');
+  
+        const { error: insertError } = await supabase
+          .from('stories')
+          .insert({
+            user_id: userId,
+            media_url: urlData.publicUrl,
+            media_type: asset.type,
+          });
+  
+        if (insertError) throw insertError;
+      }
+  
       await get().fetchStoryPreviews(userId);
-    //   router.back();
-    router.replace('/chat');
+      router.replace('/chat');
+  
     } catch (error) {
-      console.error("Error creating story:", error);
-      alert("Failed to create story. Please try again.");
+      console.error('Error creating story:', error);
+      alert('Failed to create story. Please try again.');
     } finally {
       set({ uploading: false });
     }
-  },
+  },  
 
   // --- NEWLY ADDED DELETION LOGIC ---
   deleteStory: async (storyId: string, currentUserId: string) => {

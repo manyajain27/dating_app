@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import MatchScreen from '@/screens/MatchScreen'
 import { useAuthStore } from '@/store/authStore'
-import { Ionicons } from '@expo/vector-icons'
+import { Feather, Ionicons } from '@expo/vector-icons'
 import {
   BottomSheetModal,
   BottomSheetModalProvider,
@@ -13,7 +13,6 @@ import { Image } from 'expo-image'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { Feather } from '@expo/vector-icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import Swiper from 'react-native-deck-swiper'
@@ -177,19 +176,46 @@ const SwipeScreen: React.FC = () => {
 
   useEffect(() => {
     if (!initialized || loading || !user) return
-
+  
     const fetchProfiles = async () => {
-      const { data, error } = await supabase
+      console.log('Fetching profiles for user:', user.id);
+      
+      // First, get all profile IDs that the user has already swiped on
+      const { data: swipedProfiles, error: swipeError } = await supabase
+        .from('swipes')
+        .select('swiped_id')
+        .eq('swiper_id', user.id)
+  
+      if (swipeError) {
+        console.error('Error fetching swiped profiles:', swipeError)
+        return
+      }
+
+      console.log('Already swiped profiles:', swipedProfiles);
+  
+      const swipedIds = swipedProfiles.map(swipe => swipe.swiped_id)
+  
+      // Then fetch profiles excluding the swiped ones
+      let query = supabase
         .from('profiles')
         .select('id, name, age, bio, location_city, profile_pictures, interests, height')
         .neq('id', user.id)
         .limit(20)
-
+  
+      // If there are swiped profiles, exclude them
+      if (swipedIds.length > 0) {
+        query = query.not('id', 'in', `(${swipedIds.join(',')})`)
+      }
+  
+      const { data, error } = await query
+  
       if (error) {
         console.error('Error fetching profiles:', error)
         return
       }
 
+      console.log('Fetched profiles count:', data.length);
+  
       const formatted = data.map(p => ({
         id: p.id.toString(),
         name: p.name,
@@ -204,11 +230,11 @@ const SwipeScreen: React.FC = () => {
         education: '',
         occupation: '',
       }))
-
+  
       setProfiles(formatted)
       if (formatted.length > 0) setCurrentImage(formatted[0].profile_pictures[0])
     }
-
+  
     fetchProfiles()
   }, [initialized, loading, user])
 
@@ -248,6 +274,20 @@ const SwipeScreen: React.FC = () => {
   };
 
   const onSwipedLeft = (index: number) => {
+    console.log('🚫 LEFT SWIPE DETECTED - onSwipedLeft called with index:', index);
+    const profile = profiles[index];
+    console.log('Profile being swiped left:', profile?.name, profile?.id);
+    
+    const swipedUserId = profiles[index]?.id;
+    console.log('Swiped user ID:', swipedUserId);
+    
+    if (swipedUserId) {
+      console.log('📤 Calling insertSwipe for LEFT swipe (dislike)');
+      insertSwipe(swipedUserId, false, false); // Record left swipe
+    } else {
+      console.log('❌ No swiped user ID found for left swipe');
+    }
+    
     if (!isButtonTriggeredRef.current) {
       showSwipeFeedback('left', profiles[index].name);
     }
@@ -256,8 +296,13 @@ const SwipeScreen: React.FC = () => {
   };
 
   const onSwipedRight = (index: number) => {
+    console.log('💚 RIGHT SWIPE DETECTED - onSwipedRight called with index:', index);
+    const profile = profiles[index];
+    console.log('Profile being swiped right:', profile?.name, profile?.id);
+    
     const swipedUserId = profiles[index]?.id;
     if (swipedUserId) {
+      console.log('📤 Calling insertSwipe for RIGHT swipe (like)');
       insertSwipe(swipedUserId, true, false);
     }
     if (!isButtonTriggeredRef.current) {
@@ -268,8 +313,13 @@ const SwipeScreen: React.FC = () => {
   };
 
   const onSwipedTop = (index: number) => {
+    console.log('⭐ TOP SWIPE DETECTED - onSwipedTop called with index:', index);
+    const profile = profiles[index];
+    console.log('Profile being swiped top:', profile?.name, profile?.id);
+    
     const swipedUserId = profiles[index]?.id;
     if (swipedUserId) {
+      console.log('📤 Calling insertSwipe for TOP swipe (super like)');
       insertSwipe(swipedUserId, true, true);
     }
     if (!isButtonTriggeredRef.current) {
@@ -284,18 +334,59 @@ const SwipeScreen: React.FC = () => {
     isLike: boolean,
     isSuperLike: boolean = false
   ) => {
-    if (!user?.id || !swipedProfileId) return;
-
-    const { error } = await supabase.from('swipes').upsert({
-      swiper_id: user.id,
-      swiped_id: swipedProfileId,
-      is_like: isLike,
-      is_super_like: isSuperLike,
-      swiped_at: new Date().toISOString()
+    console.log('🔄 insertSwipe called with:', {
+      swipedProfileId,
+      isLike,
+      isSuperLike,
+      userId: user?.id
     });
 
+    if (!user?.id || !swipedProfileId) {
+      console.log('❌ Missing user ID or swiped profile ID');
+      return;
+    }
+
+    const swipeData = {
+      swiper_id: user.id,
+      swiped_id: swipedProfileId,
+      is_like: Boolean(isLike), // Explicitly convert to boolean
+      is_super_like: Boolean(isSuperLike), // Explicitly convert to boolean
+      swiped_at: new Date().toISOString()
+    };
+
+    console.log('📤 Inserting swipe data:', swipeData);
+
+    // Use insert instead of upsert to avoid conflicts
+    const { data, error } = await supabase
+      .from('swipes')
+      .insert(swipeData)
+      .select();
+
     if (error) {
-      console.error('Error inserting swipe:', error);
+      console.error('❌ Error inserting swipe:', error);
+      
+      // If it's a duplicate, try to update it instead
+      if (error.code === '23505') { // Unique constraint violation
+        console.log('🔄 Duplicate found, updating existing swipe...');
+        const { data: updateData, error: updateError } = await supabase
+          .from('swipes')
+          .update({
+            is_like: Boolean(isLike),
+            is_super_like: Boolean(isSuperLike),
+            swiped_at: new Date().toISOString()
+          })
+          .eq('swiper_id', user.id)
+          .eq('swiped_id', swipedProfileId)
+          .select();
+
+        if (updateError) {
+          console.error('❌ Error updating swipe:', updateError);
+        } else {
+          console.log('✅ Swipe updated successfully:', updateData);
+        }
+      }
+    } else {
+      console.log('✅ Swipe inserted successfully:', data);
     }
   };
 
@@ -361,6 +452,13 @@ const SwipeScreen: React.FC = () => {
   const swipeLeft = () => {
     isButtonTriggeredRef.current = true;
     animateButton(buttonScale);
+    
+    // Get the current profile before swiping
+    const currentProfileToSwipe = profiles[cardIndex];
+    if (currentProfileToSwipe?.id) {
+      insertSwipe(currentProfileToSwipe.id, false, false);
+    }
+    
     showSwipeFeedback('left', currentProfile.name);
     swiperRef.current?.swipeLeft();
   };
@@ -368,6 +466,13 @@ const SwipeScreen: React.FC = () => {
   const swipeRight = () => {
     isButtonTriggeredRef.current = true;
     animateButton(buttonScale);
+    
+    // Get the current profile before swiping
+    const currentProfileToSwipe = profiles[cardIndex];
+    if (currentProfileToSwipe?.id) {
+      insertSwipe(currentProfileToSwipe.id, true, false);
+    }
+    
     showSwipeFeedback('right', currentProfile.name);
     swiperRef.current?.swipeRight();
   };
@@ -375,6 +480,13 @@ const SwipeScreen: React.FC = () => {
   const swipeTop = () => {
     isButtonTriggeredRef.current = true;
     animateButton(superLikeButtonScale);
+    
+    // Get the current profile before swiping
+    const currentProfileToSwipe = profiles[cardIndex];
+    if (currentProfileToSwipe?.id) {
+      insertSwipe(currentProfileToSwipe.id, true, true);
+    }
+    
     showSwipeFeedback('top', currentProfile.name);
     swiperRef.current?.swipeTop();
   };
@@ -1009,98 +1121,95 @@ const styles = ScaledSheet.create({
     fontWeight: '600',
     color: '#555',
   },
-  // Add these new styles to your styles object:
-closeButton: {
-  position: 'absolute',
-  right: 0,
-  padding: s(5),
-},
-headerDivider: {
-  height: 1,
-  backgroundColor: '#E8E8E8',
-  marginHorizontal: s(-20),
-  marginBottom: vs(20),
-},
-locationLeft: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: s(10),
-},
-ageRangeContainer: {
-  gap: vs(15),
-},
-ageSliderContainer: {
-  gap: vs(5),
-},
-ageLabel: {
-  fontSize: s(14),
-  color: '#666',
-  fontWeight: '500',
-},
-ageSlider: {
-  width: '100%',
-  height: 40,
-},
-sliderThumb: {
-  backgroundColor: '#FF4F69',
-  width: s(20),
-  height: s(20),
-},
-continueButtonGradient: {
-  paddingVertical: vs(15),
-  borderRadius: s(30),
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '100%',
-},
-
-// Update existing styles:
-modalHeader: {
-  flexDirection: 'row',
-  justifyContent: 'center',
-  alignItems: 'center',
-  marginBottom: vs(15),
-  position: 'relative',
-},
-segmentButton: {
-  flex: 1,
-  paddingVertical: vs(12),
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexDirection: 'row',
-  gap: s(5),
-},
-segmentButtonActive: {
-  backgroundColor: '#FF4F69',
-  shadowColor: '#FF4F69',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.3,
-  shadowRadius: 4,
-  elevation: 3,
-},
-locationInput: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  backgroundColor: '#FAFAFA',
-  paddingHorizontal: s(15),
-  paddingVertical: vs(15),
-  borderRadius: s(12),
-  borderWidth: 1,
-  borderColor: '#E8E8E8',
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.05,
-  shadowRadius: 2,
-  elevation: 1,
-},
-continueButton: {
-  marginTop: 'auto',
-  marginBottom: vs(20),
-  shadowColor: '#FF4F69',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 8,
-  elevation: 5,
-},
+  closeButton: {
+    position: 'absolute',
+    right: 0,
+    padding: s(5),
+  },
+  headerDivider: {
+    height: 1,
+    backgroundColor: '#E8E8E8',
+    marginHorizontal: s(-20),
+    marginBottom: vs(20),
+  },
+  locationLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: s(10),
+  },
+  ageRangeContainer: {
+    gap: vs(15),
+  },
+  ageSliderContainer: {
+    gap: vs(5),
+  },
+  ageLabel: {
+    fontSize: s(14),
+    color: '#666',
+    fontWeight: '500',
+  },
+  ageSlider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderThumb: {
+    backgroundColor: '#FF4F69',
+    width: s(20),
+    height: s(20),
+  },
+  continueButtonGradient: {
+    paddingVertical: vs(15),
+    borderRadius: s(30),
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: vs(15),
+    position: 'relative',
+  },
+  segmentButton: {
+    flex: 1,
+    paddingVertical: vs(12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: s(5),
+  },
+  segmentButtonActive: {
+    backgroundColor: '#FF4F69',
+    shadowColor: '#FF4F69',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  locationInput: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+    paddingHorizontal: s(15),
+    paddingVertical: vs(15),
+    borderRadius: s(12),
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  continueButton: {
+    marginTop: 'auto',
+    marginBottom: vs(20),
+    shadowColor: '#FF4F69',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
 });

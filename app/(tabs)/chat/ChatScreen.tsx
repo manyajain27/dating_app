@@ -1,25 +1,27 @@
-import StoryRail from '@/components/StoryRail';
-import { useAuthStore } from '@/store/authStore';
-import { Conversation, useChatStore } from '@/store/chatStore';
-import { StoryPreview, useStoryStore } from '@/store/storyStore';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useChatStore, Conversation } from '@/store/chatStore';
+import { useAuthStore } from '@/store/authStore';
+import StoryRail from '@/components/StoryRail';
+import { StoryPreview, useStoryStore } from '@/store/storyStore';
 
 const ChatScreen: React.FC = () => {
-  // State from stores
-  const { conversations, loading: chatLoading, fetchConversations, init } = useChatStore();
+  const insets = useSafeAreaInsets();
+  const { conversations, loading, fetchConversations, currentUserId, init, cleanup } = useChatStore();
   const { profile } = useAuthStore();
+
   const {
     storyPreviews,
     myStoriesCount,
@@ -28,49 +30,39 @@ const ChatScreen: React.FC = () => {
     loading: storiesLoading,
   } = useStoryStore();
 
-  // Map storyPreviews to Story type for StoryRail
   const mappedStories = storyPreviews.map((preview) => ({
     story_id: preview.story_id,
     user_id: preview.user_id,
     user_name: preview.user_name,
     profile_picture: preview.profile_picture,
-    media_url: '', // No preview media, so empty string
-    media_type: 'image' as 'image', // Explicitly type as 'image'
-    created_at: '', // Not available in preview
+    media_url: '',
+    media_type: 'image' as 'image',
+    created_at: '',
     is_viewed: preview.is_viewed,
-    total_stories: 1, // Assume 1 for preview
+    total_stories: 1,
   }));
 
-  // Local state
-  const [refreshing, setRefreshing] = useState(false);
-
-  // Initialize chat and fetch initial data
   useEffect(() => {
-    if (profile?.id) {
+    if (profile?.id && currentUserId !== profile.id) {
       init(profile.id);
       fetchStoryPreviews(profile.id);
     }
-  }, [profile?.id, init]);
+  }, [profile?.id]);
 
-  // Refetch data when the screen comes into focus
   useFocusEffect(
-    useCallback(() => {
-      if (profile?.id) {
+    React.useCallback(() => {
+      if (profile?.id && currentUserId === profile.id) {
         fetchConversations();
         fetchStoryPreviews(profile.id);
       }
-    }, [profile?.id])
+    }, [profile?.id, currentUserId])
   );
 
-  // Pull-to-refresh handler
-  const handleRefresh = async () => {
-    if (!profile?.id) return;
-    setRefreshing(true);
-    await Promise.all([fetchConversations(), fetchStoryPreviews(profile.id)]);
-    setRefreshing(false);
+  const handleRefresh = () => {
+    fetchConversations();
+    fetchStoryPreviews(profile?.id ?? '');
   };
 
-  // --- Story Handlers ---
   const handlePressStory = (story: StoryPreview) => {
     if (!profile?.id) return;
     openStoryViewer(story.user_id, profile.id);
@@ -79,90 +71,127 @@ const ChatScreen: React.FC = () => {
   const handlePressYourStory = () => {
     if (!profile?.id) return;
     if (myStoriesCount > 0) {
-      // View your own stories
       openStoryViewer(profile.id, profile.id);
     } else {
-      // Go to the story creation screen
       router.push('/create-story');
-      
     }
   };
 
-  // --- Helper Functions ---
-  const getOtherUser = (conversation: Conversation) => {
-    if (!conversation.match || !profile?.id) return null;
-    const isUser1 = conversation.match.user1.id === profile.id;
-    return isUser1 ? conversation.match.user2 : conversation.match.user1;
-  };
-
-  const formatTime = (timestamp?: string) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
+  const formatLastMessageTime = (timestamp: string) => {
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.round(diffMs / 60000);
-    if (diffMins < 1) return 'now';
+    const messageDate = new Date(timestamp);
+    const diffMs = now.getTime() - messageDate.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Now';
     if (diffMins < 60) return `${diffMins}m`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
-    if (diffMins < 10080) return `${Math.floor(diffMins / 1440)}d`;
-    return date.toLocaleDateString();
+    if (diffHours < 24) return `${diffHours}h`;
+    if (diffDays < 7) return `${diffDays}d`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+
+    return messageDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: messageDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
   };
 
-  const getLastMessagePreview = (item: Conversation) => {
-    if (!item.last_message) return 'Start a conversation!';
-    const { content, sender_id } = item.last_message;
-    const prefix = sender_id === profile?.id ? 'You: ' : '';
-    const truncatedContent = content.length > 30 ? `${content.substring(0, 30)}...` : content;
+  const formatLastMessage = (conversation: Conversation) => {
+    const lastMessage = conversation.last_message;
+    if (!lastMessage) return 'Start a conversation';
+
+    const isMyMessage = lastMessage.sender_id === currentUserId;
+    const prefix = isMyMessage ? 'You: ' : '';
+
+    if (lastMessage.message_type === 'image') {
+      return `${prefix}📷 Photo`;
+    }
+
+    if (lastMessage.message_type === 'teaser_reply' && lastMessage.metadata?.teaser) {
+      return `${prefix}Replied to: "${lastMessage.metadata.teaser}"`;
+    }
+
+    const truncatedContent = lastMessage.content.length > 50
+      ? lastMessage.content.substring(0, 50) + '...'
+      : lastMessage.content;
+
     return `${prefix}${truncatedContent}`;
   };
 
-  // --- Render Functions ---
+  const getOtherUser = (conversation: Conversation) => {
+    if (!conversation.match) return null;
+    return conversation.match.user1.id === currentUserId
+      ? conversation.match.user2
+      : conversation.match.user1;
+  };
+
   const renderConversationItem = ({ item }: { item: Conversation }) => {
     const otherUser = getOtherUser(item);
     if (!otherUser) return null;
 
-    const userImage = otherUser.profile_pictures?.[0] || 'https://via.placeholder.com/60';
     const hasUnread = item.unread_count > 0;
-    const isMyLastMessage = item.last_message?.sender_id === profile?.id;
+    const lastMessage = item.last_message;
+    const isLastMessageMine = lastMessage?.sender_id === currentUserId;
+    const isLastMessageRead = lastMessage?.is_read;
 
     return (
       <TouchableOpacity
         style={styles.conversationItem}
-        onPress={() =>
+        onPress={() => {
           router.push({
             pathname: '/chat/[id]',
             params: {
               id: item.id,
               userName: otherUser.name,
-              userImage: userImage,
+              userImage: otherUser.profile_pictures?.[0] || '',
             },
-          })
-        }
+          });
+        }}
         activeOpacity={0.7}
       >
-        <Image source={{ uri: userImage }} style={styles.avatar} contentFit="cover" />
-        <View style={styles.messageInfo}>
-          <View style={styles.messageHeader}>
-            <Text style={[styles.userName, hasUnread && styles.unreadText]}>{otherUser.name}</Text>
-            <Text style={styles.timestamp}>{formatTime(item.last_message_at)}</Text>
-          </View>
-          <View style={styles.lastMessageRow}>
-            <View style={styles.previewContainer}>
-              {isMyLastMessage && (
+        <View style={styles.avatarContainer}>
+          <Image
+            source={{ uri: otherUser.profile_pictures?.[0] || 'https://via.placeholder.com/56' }}
+            style={styles.avatar}
+            contentFit="cover"
+          />
+          {hasUnread && <View style={styles.unreadDot} />}
+        </View>
+
+        <View style={styles.conversationContent}>
+          <View style={styles.conversationHeader}>
+            <Text style={[styles.userName, hasUnread && styles.userNameUnread]} numberOfLines={1}>
+              {otherUser.name}
+            </Text>
+            <View style={styles.metaContainer}>
+              {isLastMessageMine && lastMessage && (
                 <Ionicons
-                  name={item.last_message?.is_read ? 'checkmark-done' : 'checkmark'}
+                  name={isLastMessageRead ? "checkmark-done" : "checkmark"}
                   size={16}
-                  color={item.last_message?.is_read ? '#FF1493' : 'rgba(0,0,0,0.5)'}
-                  style={styles.readIcon}
+                  color={isLastMessageRead ? "#e64e5e" : "#8E8E93"}
+                  style={styles.readIndicator}
                 />
               )}
-              <Text style={[styles.lastMessage, hasUnread && styles.unreadText]} numberOfLines={1}>
-                {getLastMessagePreview(item)}
+              <Text style={[styles.timestamp, hasUnread && styles.timestampUnread]}>
+                {lastMessage ? formatLastMessageTime(lastMessage.created_at) : ''}
               </Text>
             </View>
+          </View>
+
+          <View style={styles.messagePreviewContainer}>
+            <Text
+              style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]}
+              numberOfLines={1}
+            >
+              {formatLastMessage(item)}
+            </Text>
             {hasUnread && (
               <View style={styles.unreadBadge}>
-                <Text style={styles.unreadCount}>{item.unread_count}</Text>
+                <Text style={styles.unreadCount}>
+                  {item.unread_count > 99 ? '99+' : item.unread_count}
+                </Text>
               </View>
             )}
           </View>
@@ -171,19 +200,31 @@ const ChatScreen: React.FC = () => {
     );
   };
 
-  if (chatLoading && conversations.length === 0) {
-    return (
-      <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#FF1493" />
-      </View>
-    );
-  }
+  const EmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="chatbubbles-outline" size={64} color="#C7C7CC" />
+      <Text style={styles.emptyTitle}>No conversations yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Start matching to begin chatting with people
+      </Text>
+    </View>
+  );
+
+  const sortedConversations = useMemo(() => {
+    return [...conversations].sort((a, b) => {
+      const timeA = a.last_message?.created_at || a.last_message_at;
+      const timeB = b.last_message?.created_at || b.last_message_at;
+      return new Date(timeB).getTime() - new Date(timeA).getTime();
+    });
+  }, [conversations]);
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
+        <TouchableOpacity style={styles.headerButton}>
+          <Ionicons name="search" size={24} color="#e64e5e" />
+        </TouchableOpacity>
       </View>
 
       <StoryRail
@@ -194,145 +235,147 @@ const ChatScreen: React.FC = () => {
       />
 
       <FlatList
-        data={conversations}
+        data={sortedConversations}
         renderItem={renderConversationItem}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContainer}
-        refreshing={refreshing}
-        onRefresh={handleRefresh}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          !chatLoading ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={80} color="rgba(0,0,0,0.15)" />
-              <Text style={styles.emptyTitle}>No Messages Yet</Text>
-              <Text style={styles.emptySubtitle}>
-                When you match with someone, you'll see your conversation here.
-              </Text>
-            </View>
-          ) : null
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={handleRefresh}
+            tintColor="#e64e5e"
+            colors={['#e64e5e']}
+          />
         }
+        ListEmptyComponent={!loading ? <EmptyState /> : null}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
+
+      {loading && conversations.length === 0 && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#e64e5e" />
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff', // Changed to white
-  },
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
   header: {
-    paddingTop: 60,
-    paddingBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#ff4458', // Accent color for Messages title
+  headerTitle: { fontSize: 28, fontWeight: '700', color: '#000000' },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  listContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
+  listContent: { flexGrow: 1 },
   conversationItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 20,
     paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: 12,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginRight: 15,
-    backgroundColor: '#eee', // Lighter bg for white
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#F2F2F7',
   },
-  messageInfo: {
-    flex: 1,
-    justifyContent: 'center',
+  unreadDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e64e5e',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  messageHeader: {
+  conversationContent: { flex: 1, justifyContent: 'center' },
+  conversationHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   userName: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#111', // Dark text
+    color: '#000000',
+    flex: 1,
+    marginRight: 8,
   },
-  timestamp: {
-    fontSize: 13,
-    color: 'rgba(0,0,0,0.4)',
-  },
-  lastMessageRow: {
+  userNameUnread: { fontWeight: '700' },
+  metaContainer: { flexDirection: 'row', alignItems: 'center' },
+  readIndicator: { marginRight: 4 },
+  timestamp: { fontSize: 13, color: '#8E8E93', fontWeight: '400' },
+  timestampUnread: { color: '#e64e5e', fontWeight: '600' },
+  messagePreviewContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  previewContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  readIcon: {
-    marginRight: 5,
-  },
-  lastMessage: {
-    fontSize: 15,
-    color: 'rgba(0,0,0,0.6)',
-    flexShrink: 1,
-  },
-  unreadText: {
-    fontWeight: 'bold',
-    color: '#111', // Dark text
-  },
+  lastMessage: { fontSize: 14, color: '#8E8E93', flex: 1, marginRight: 8 },
+  lastMessageUnread: { color: '#000000', fontWeight: '500' },
   unreadBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#FF1493',
-    justifyContent: 'center',
+    backgroundColor: '#e64e5e',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 20,
     alignItems: 'center',
-    marginLeft: 10,
-  },
-  unreadCount: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    marginLeft: 95,
-  },
-  centeredContainer: {
-    flex: 1,
-    backgroundColor: '#fff', // White bg
     justifyContent: 'center',
-    alignItems: 'center',
   },
+  unreadCount: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
+  separator: { height: 1, backgroundColor: '#F2F2F7', marginLeft: 88 },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-    height: 400,
+    paddingHorizontal: 40,
+    paddingBottom: 100,
   },
   emptyTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#111', // Dark text
-    marginTop: 20,
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#000000',
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: 'rgba(0,0,0,0.6)',
+    color: '#8E8E93',
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
 });
 

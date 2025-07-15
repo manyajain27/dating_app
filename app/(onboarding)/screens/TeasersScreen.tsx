@@ -1,209 +1,486 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  TextInput, 
+  ScrollView, 
+  StyleSheet,
+  Animated,
+  Platform,
+  Dimensions,
+  KeyboardAvoidingView
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { ScreenProps, TEASER_CATEGORIES, TeaserCategory } from '../types/FormData';
 
+const { width: screenWidth } = Dimensions.get('window');
+const MAX_PROMPTS = 3; // Limit to 3 prompts for better UX
+
 const TeasersScreen = ({ formData, updateFormData, nextStep }: ScreenProps) => {
-  const [activeCategory, setActiveCategory] = useState(TEASER_CATEGORIES[0].id);
   const [selectedPrompts, setSelectedPrompts] = useState<string[]>(Object.keys(formData.teasers || {}));
   const [answers, setAnswers] = useState<Record<string, string>>(formData.teasers || {});
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
+  const [hasAnimated, setHasAnimated] = useState(false);
+  
+  // Animated values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim1 = useRef(new Animated.Value(50)).current;
+  const slideAnim2 = useRef(new Animated.Value(50)).current;
+  const slideAnim3 = useRef(new Animated.Value(50)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
 
-  const togglePrompt = (prompt: string) => {
-    setSelectedPrompts((prev) =>
-      prev.includes(prompt) ? prev.filter(p => p !== prompt) : [...prev, prompt]
-    );
-  };
+  // Get all prompts from all categories for simpler UX
+  const allPrompts = useMemo(() => {
+    const prompts: string[] = [];
+    TEASER_CATEGORIES.forEach(category => {
+      prompts.push(...category.teasers);
+    });
+    return prompts;
+  }, []);
 
-  const handleInputChange = (prompt: string, text: string) => {
-    setAnswers((prev) => ({ ...prev, [prompt]: text }));
-  };
+  // Shuffle prompts for variety
+  const shuffledPrompts = useMemo(() => {
+    return [...allPrompts].sort(() => Math.random() - 0.5).slice(0, 12); // Show 12 random prompts
+  }, [allPrompts]);
 
-  const handleContinue = () => {
-    const filled = Object.entries(answers).filter(([k, v]) => selectedPrompts.includes(k) && v.trim());
-    if (filled.length > 0) {
-      const result = filled.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {});
-      updateFormData('teasers', result);
-      nextStep();
+  const isValidSelection = useMemo(() => {
+    const filledAnswers = Object.entries(answers).filter(([k, v]) => selectedPrompts.includes(k) && v.trim().length > 0);
+    return filledAnswers.length > 0;
+  }, [answers, selectedPrompts]);
+
+  // Entrance animations
+  useEffect(() => {
+    if (!hasAnimated) {
+      setHasAnimated(true);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Staggered slide animations
+      Animated.stagger(200, [
+        Animated.spring(slideAnim1, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim2, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim3, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
-  };
+  }, [hasAnimated]);
 
-  const currentCategory: TeaserCategory = TEASER_CATEGORIES.find(c => c.id === activeCategory)!;
+  const togglePrompt = useCallback((prompt: string) => {
+    if (selectedPrompts.includes(prompt)) {
+      // Remove prompt
+      setSelectedPrompts(prev => prev.filter(p => p !== prompt));
+      setAnswers(prev => {
+        const newAnswers = { ...prev };
+        delete newAnswers[prompt];
+        return newAnswers;
+      });
+    } else if (selectedPrompts.length < MAX_PROMPTS) {
+      // Add prompt
+      setSelectedPrompts(prev => [...prev, prompt]);
+    }
+    
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, [selectedPrompts]);
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
-      <Animated.View entering={FadeInUp.delay(100)}>
-        <Text style={styles.heading}>answer a few, be unforgettable.</Text>
-        <Text style={styles.subtext}>pick prompts you vibe with and write your take.</Text>
-      </Animated.View>
+  const handleInputChange = useCallback((prompt: string, text: string) => {
+    setAnswers(prev => ({ ...prev, [prompt]: text }));
+  }, []);
 
-      {/* Tabs */}
-      <Animated.View entering={FadeInUp.delay(200)} style={styles.tabs}>
-        {TEASER_CATEGORIES.map((cat) => (
-          <TouchableOpacity
-            key={cat.id}
-            onPress={() => setActiveCategory(cat.id)}
-            style={[styles.tab, activeCategory === cat.id && styles.tabActive]}
-          >
-            <Text style={[styles.tabText, activeCategory === cat.id && styles.tabTextActive]}>
-              {cat.title}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </Animated.View>
+  const handleInputFocus = useCallback((prompt: string) => {
+    setFocusedInput(prompt);
+  }, []);
 
-      {/* Prompt selector + answers */}
-      <Animated.View entering={FadeInUp.delay(300)} style={styles.promptBlock}>
-        {currentCategory.teasers.map((prompt) => {
-          const selected = selectedPrompts.includes(prompt);
-          return (
-            <View key={prompt} style={styles.promptItem}>
-              <TouchableOpacity
-                style={[styles.promptHeader, selected && styles.promptHeaderActive]}
-                onPress={() => togglePrompt(prompt)}
-              >
-                <Text style={[styles.promptText, selected && styles.promptTextActive]}>
-                  {prompt}
-                </Text>
-              </TouchableOpacity>
+  const handleInputBlur = useCallback(() => {
+    setFocusedInput(null);
+  }, []);
 
-              {selected && (
-                <TextInput
-                  placeholder="type your answer"
-                  placeholderTextColor="#777"
-                  style={styles.input}
-                  multiline
-                  value={answers[prompt] || ''}
-                  onChangeText={(text) => handleInputChange(prompt, text)}
-                />
-              )}
-            </View>
-          );
-        })}
-      </Animated.View>
+  const handleButtonPressIn = useCallback(() => {
+    if (!isValidSelection) return;
+    
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.95,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [isValidSelection, buttonScaleAnim]);
 
-      {/* Continue button */}
-      <Animated.View entering={FadeInUp.delay(400)}>
+  const handleButtonPressOut = useCallback(() => {
+    if (!isValidSelection) return;
+    
+    Animated.spring(buttonScaleAnim, {
+      toValue: 1,
+      tension: 150,
+      friction: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [isValidSelection, buttonScaleAnim]);
+
+  const handleContinue = useCallback(() => {
+    const filledAnswers = Object.entries(answers).filter(([k, v]) => selectedPrompts.includes(k) && v.trim().length > 0);
+    if (filledAnswers.length === 0) return;
+    
+    const result = filledAnswers.reduce((acc, [k, v]) => ({ ...acc, [k]: v.trim() }), {});
+    updateFormData('teasers', result);
+    
+    // Haptic feedback
+    if (Platform.OS === 'ios') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    nextStep();
+  }, [answers, selectedPrompts, updateFormData, nextStep]);
+
+  const renderPromptCard = useCallback((prompt: string, index: number) => {
+    const isSelected = selectedPrompts.includes(prompt);
+    const isDisabled = !isSelected && selectedPrompts.length >= MAX_PROMPTS;
+    const isFocused = focusedInput === prompt;
+    
+    return (
+      <View key={prompt} style={styles.promptCard}>
         <TouchableOpacity
           style={[
-            styles.button,
-            Object.entries(answers).some(([k, v]) => selectedPrompts.includes(k) && v.trim()) && styles.buttonActive,
+            styles.promptHeader,
+            isSelected && styles.promptHeaderActive,
+            isDisabled && styles.promptHeaderDisabled,
+            isFocused && styles.promptHeaderFocused,
           ]}
-          onPress={handleContinue}
+          onPress={() => togglePrompt(prompt)}
+          disabled={isDisabled}
+          activeOpacity={0.8}
+          accessibilityLabel={`${isSelected ? 'remove' : 'select'} prompt: ${prompt}`}
+          accessibilityHint={isSelected ? 'tap to remove this prompt' : 'tap to select this prompt'}
+          accessibilityRole="button"
         >
-          <Text style={styles.buttonText}>continue</Text>
+          <View style={styles.promptHeaderContent}>
+            <Text style={[
+              styles.promptText,
+              isSelected && styles.promptTextActive,
+              isDisabled && styles.promptTextDisabled,
+            ]}>
+              {prompt}
+            </Text>
+            {isSelected && (
+              <Ionicons name="checkmark-circle" size={20} color="#ffffff" />
+            )}
+          </View>
         </TouchableOpacity>
-      </Animated.View>
-    </ScrollView>
+
+        {isSelected && (
+          <View style={[styles.inputContainer, isFocused && styles.inputContainerFocused]}>
+            <TextInput
+              placeholder="share your thoughts..."
+              placeholderTextColor="#a0a0a0"
+              style={styles.input}
+              multiline
+              value={answers[prompt] || ''}
+              onChangeText={(text) => handleInputChange(prompt, text)}
+              onFocus={() => handleInputFocus(prompt)}
+              onBlur={handleInputBlur}
+              maxLength={150}
+              accessibilityLabel={`answer for ${prompt}`}
+              accessibilityHint="type your response to this prompt"
+            />
+            <Text style={styles.characterCount}>
+              {(answers[prompt] || '').length}/150
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }, [selectedPrompts, answers, focusedInput, togglePrompt, handleInputChange, handleInputFocus, handleInputBlur]);
+
+  return (
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView 
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Animated.View 
+          style={[
+            styles.contentContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }]
+            }
+          ]}
+        >
+          {/* Header */}
+          <Animated.View 
+            style={[
+              styles.headerContainer,
+              { transform: [{ translateY: slideAnim1 }] }
+            ]}
+          >
+            <Text style={styles.heading}>show your personality</Text>
+            <Text style={styles.subtext}>pick up to {MAX_PROMPTS} prompts and share your thoughts</Text>
+            {selectedPrompts.length > 0 && (
+              <View style={styles.progressContainer}>
+                <Text style={styles.progressText}>
+                  {selectedPrompts.length} of {MAX_PROMPTS} selected
+                </Text>
+                <View style={styles.progressBar}>
+                  <View 
+                    style={[
+                      styles.progressFill, 
+                      { width: `${(selectedPrompts.length / MAX_PROMPTS) * 100}%` }
+                    ]} 
+                  />
+                </View>
+              </View>
+            )}
+          </Animated.View>
+
+          {/* Prompts Grid */}
+          <Animated.View 
+            style={[
+              styles.promptsSection,
+              { transform: [{ translateY: slideAnim2 }] }
+            ]}
+          >
+            {shuffledPrompts.map((prompt, index) => renderPromptCard(prompt, index))}
+          </Animated.View>
+
+          {/* Continue Button */}
+          <Animated.View 
+            style={[
+              styles.buttonContainer,
+              { transform: [{ translateY: slideAnim3 }] }
+            ]}
+          >
+            <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  isValidSelection && styles.buttonActive,
+                  !isValidSelection && styles.buttonInactive
+                ]}
+                onPress={handleContinue}
+                onPressIn={handleButtonPressIn}
+                onPressOut={handleButtonPressOut}
+                disabled={!isValidSelection}
+                accessibilityLabel="continue"
+                accessibilityHint={isValidSelection ? 'continue to next step' : 'complete at least one prompt to continue'}
+                accessibilityRole="button"
+                activeOpacity={0.8}
+              >
+                <Text style={[
+                  styles.buttonText,
+                  isValidSelection && styles.buttonTextActive
+                ]}>
+                  continue
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </Animated.View>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#ffffff',
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 80,
+  },
+  contentContainer: {
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 100,
+    paddingBottom: 40,
+  },
+  headerContainer: {
+    marginBottom: 32,
   },
   heading: {
-    fontSize: 24,
-    color: '#fff',
+    fontSize: 28,
+    color: '#2c2c2c',
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 12,
     textTransform: 'lowercase',
   },
   subtext: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 16,
+    textTransform: 'lowercase',
+  },
+  progressContainer: {
+    marginTop: 8,
+  },
+  progressText: {
     fontSize: 14,
-    color: '#888',
-    marginBottom: 20,
-    textTransform: 'lowercase',
-  },
-  tabs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
-  },
-  tab: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: '#1c1c1c',
-    borderRadius: 20,
-    borderColor: '#2a2a2a',
-    borderWidth: 1,
-  },
-  tabActive: {
-    backgroundColor: '#fff',
-    borderColor: '#fff',
-  },
-  tabText: {
-    fontSize: 13,
-    color: '#fff',
-    textTransform: 'lowercase',
-  },
-  tabTextActive: {
-    color: '#000',
+    color: '#ffb6c1',
     fontWeight: '600',
+    marginBottom: 8,
   },
-  promptBlock: {
-    gap: 20,
+  progressBar: {
+    height: 4,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  promptItem: {
-    marginBottom: 16,
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#ffb6c1',
+    borderRadius: 2,
+  },
+  promptsSection: {
+    marginBottom: 32,
+  },
+  promptCard: {
+    marginBottom: 20,
   },
   promptHeader: {
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: '#1c1c1c',
-    borderRadius: 12,
-    borderColor: '#2a2a2a',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 16,
     borderWidth: 1,
+    borderColor: '#e0e0e0',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   promptHeaderActive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
+    backgroundColor: '#ffb6c1',
+    borderColor: '#ffb6c1',
+    shadowOpacity: 0.1,
+  },
+  promptHeaderDisabled: {
+    opacity: 0.4,
+  },
+  promptHeaderFocused: {
+    borderColor: '#ffb6c1',
+    borderWidth: 2,
+  },
+  promptHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   promptText: {
-    fontSize: 14,
-    color: '#ffffff',
+    fontSize: 16,
+    color: '#666666',
+    fontWeight: '500',
     textTransform: 'lowercase',
+    flex: 1,
+    marginRight: 12,
   },
   promptTextActive: {
-    color: '#000000',
+    color: '#ffffff',
     fontWeight: '600',
   },
-  input: {
-    backgroundColor: '#1a1a1a',
-    borderColor: '#2a2a2a',
-    borderWidth: 1,
+  promptTextDisabled: {
+    color: '#a0a0a0',
+  },
+  inputContainer: {
+    marginTop: 12,
+    backgroundColor: '#fafafa',
     borderRadius: 12,
-    padding: 14,
-    color: '#fff',
-    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    padding: 16,
+  },
+  inputContainerFocused: {
+    backgroundColor: '#fff5f7',
+    borderColor: '#ffb6c1',
+    borderWidth: 2,
+  },
+  input: {
+    color: '#2c2c2c',
+    fontSize: 16,
+    fontWeight: '500',
     minHeight: 80,
     textAlignVertical: 'top',
-    marginTop: 10,
-    textTransform: 'lowercase',
+    lineHeight: 22,
+  },
+  characterCount: {
+    fontSize: 12,
+    color: '#a0a0a0',
+    textAlign: 'right',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  buttonContainer: {
+    marginTop: 24,
   },
   button: {
-    marginTop: 28,
-    backgroundColor: '#1a1a1a',
     paddingVertical: 18,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#444',
-    opacity: 0.4,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   buttonActive: {
-    opacity: 1,
-    borderColor: '#fff',
+    backgroundColor: '#ffb6c1',
+  },
+  buttonInactive: {
+    backgroundColor: '#f0f0f0',
   },
   buttonText: {
-    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    color: '#a0a0a0',
     textTransform: 'lowercase',
+  },
+  buttonTextActive: {
+    color: '#ffffff',
   },
 });
 

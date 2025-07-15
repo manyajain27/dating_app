@@ -5,17 +5,18 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { Heart, SlidersHorizontal, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router'; // Import router
 
 dayjs.extend(relativeTime);
 
@@ -32,10 +33,10 @@ const MatchesScreen: React.FC = () => {
   const currentUserId = user?.id;
 
   const [matches, setMatches] = useState<MatchCard[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Initial loading state set to true
 
   const fetchMatches = async () => {
-    setLoading(true);
+    setLoading(true); // Set loading to true when starting to fetch
     const { data, error } = await supabase
       .from('matches')
       .select(`
@@ -60,7 +61,7 @@ const MatchesScreen: React.FC = () => {
     const cleaned: MatchCard[] = data.map((match: any) => {
       const other = match.user1?.id === currentUserId ? match.user2 : match.user1;
       return {
-        id: match.id,
+        id: other?.id || match.id, // Ensure id is the other user's profile ID
         created_at: match.matched_at,
         name: other?.name || 'Unknown',
         age: other?.age || 0,
@@ -69,7 +70,7 @@ const MatchesScreen: React.FC = () => {
     });
 
     setMatches(cleaned);
-    setLoading(false);
+    setLoading(false); // Set loading to false after fetching is complete
   };
 
   useEffect(() => {
@@ -90,7 +91,10 @@ const MatchesScreen: React.FC = () => {
   };
 
   const renderCard = ({ item }: { item: MatchCard }) => (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => router.push(`/(tabs)/${item.id}`)} // Navigate to profile using item.id
+    >
       <Image source={{ uri: item.avatar_url }} style={styles.image} />
       <View style={styles.overlay}>
         <Text style={styles.name}>{item.name}, {item.age}</Text>
@@ -103,7 +107,7 @@ const MatchesScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -118,8 +122,12 @@ const MatchesScreen: React.FC = () => {
 
       <Text style={styles.subtitle}>This is a list of people who have liked you and your matches.</Text>
 
+      {/* Conditionally render ActivityIndicator or content */}
       {loading ? (
-        <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#ff4458" />
+          <Text style={styles.loadingText}>Loading matches...</Text>
+        </View>
       ) : matches.length === 0 ? (
         <Text style={styles.emptyText}>No matches yet</Text>
       ) : (
@@ -189,6 +197,18 @@ const styles = StyleSheet.create({
     marginTop: 40,
     fontSize: 14,
     color: 'rgba(0,0,0,0.3)',
+  },
+  // Added for loading state
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 40,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: 'rgba(0,0,0,0.6)',
   },
   card: {
     width: CARD_WIDTH,
